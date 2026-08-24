@@ -6,18 +6,30 @@
 
 A small website that replaces the "Rental Record" sheet in `EECIS_DEVICE_LIST.xlsx`. Members of other groups sign in with their `ethz.ch` email, request to borrow an EECIS device, request extensions, and mark devices returned. The lab manager never has to log in — every decision is made by clicking a link in an email.
 
-## The four flows
+## The five flows
 
 1. **Request.** A borrower signs in, picks a device, and fills in the request form (dates, their name, their lab manager's name/email, their professor's name/email). Submitting sends an email to the lab manager with an **Approve** and a **Deny** link. Clicking either link opens a confirmation page on the website ("you are about to approve/deny this") — nothing changes until you press the button on that page. Once decided, the borrower gets an email with the outcome.
 2. **Extension.** From "My rentals", a borrower with an approved rental can request a new (later) end date. This sends the same kind of approve/deny email to the lab manager, and the borrower is emailed the outcome.
 3. **Return.** From "My rentals", the borrower marks the device returned. The lab manager gets a confirmation email; no approval is needed for this step.
 4. **Overdue warnings.** Every day, a scheduled job checks for approved rentals whose end date has passed and haven't been warned about today. It emails the **borrower**, the borrower's **lab manager**, the borrower's **professor**, and **our lab manager** (`LAB_MANAGER_EMAIL`). This repeats every day until the device is marked returned.
+5. **Device proposal.** Any signed-in user can propose a device on the *Devices* page. That sends the same kind of approve/deny email to the lab manager; approving inserts the device into the rental list, and the proposer is emailed the outcome either way.
 
 ## Using it as a borrower
 
 - Sign in on the site with your `ethz.ch` address (an 8-digit code is emailed to you, no password) and request a device from the Devices list.
 - Watch your email for the approve/deny decision, and check "My rentals" any time to see status, request an extension, or mark a device returned.
 - If a rental becomes overdue you (and your lab manager, professor, and ours) will get a daily reminder email until it's marked returned.
+
+## Proposing a device
+
+If your group buys a device that should be rentable through this site, you don't need admin access to add it:
+
+1. Sign in and open **Devices / propose a device** in the nav (`site/devices.html`).
+2. Fill in the proposal: your name, the device's name and (optionally) maker and model, its `Nr.`, whether it carries a physical "Nr.x" sticker, and a note for the lab manager.
+3. Submitting stores a row in `device_requests` and emails the lab manager an **Approve**/**Deny** link — the same single-use-token flow the rental requests use. You get a receipt email straight away.
+4. On **Approve** the device is inserted into `devices` (active, so it shows up in the rental list immediately) and the proposal records its `device_id`. On **Deny** nothing is added. Either way you get an email with the outcome.
+
+Your own proposals and their status are listed under the form; an admin sees everyone's there, with a **Proposer** column. If the proposed device already exists in the list, approving returns "that device already exists" and the proposal stays pending, so the lab manager can deny the duplicate instead.
 
 ## Setup checklist (one-time, owner)
 
@@ -80,21 +92,22 @@ Run through this checklist end to end with a real `ethz.ch` address after setup:
    ```
 8. Confirm the overdue warning arrives (borrower, their lab manager, their professor, our lab manager).
 9. Mark the rental returned from "My rentals" and confirm the return email arrives.
+10. Propose a device from the *Devices* page, approve it the same way, and confirm it appears in the device list.
 
 ### Lost or missed decision email
 
-Every request creates a single-use token in the `action_tokens` table. If the Approve/Deny email is lost, open Supabase → Table Editor → `action_tokens`, copy the `token` whose `target_id` is the rental id (and `used_at` is empty), and open
+Every request creates a single-use token in the `action_tokens` table. If the Approve/Deny email is lost, open Supabase → Table Editor → `action_tokens`, copy the `token` whose `target_id` is the rental id (or, for `kind = 'device'`, the `device_requests` id) and whose `used_at` is empty, and open
 `https://skethz.github.io/eecis-device-rental/decide.html?token=<token>&action=approve` (or `&action=deny`).
 
 ## Day-to-day
 
-- **Editing inventory.** Sign in as an admin and use the **Manage devices** page (`site/devices.html`, linked from the nav only for admins). It lists every device — inactive ones included — with an editable row for name, maker, model, unit number, *labelled* and *active*, plus an "Add a device" form. Devices are never deleted: untick **Active** to retire one so the rentals referencing it keep working. You can still edit the `devices` table directly in the Supabase Table Editor, or update `EECIS_DEVICE_LIST.xlsx` and regenerate the seed SQL:
+- **Editing inventory.** Sign in as an admin and open the *Devices* page (`site/devices.html`); the **Edit devices (admin)** section at the bottom is visible only to admins. It lists every device — inactive ones included — with an editable row for name, maker, model, unit number, *labelled* and *active*, plus an "Add a device" form. Devices are never deleted: untick **Active** to retire one so the rentals referencing it keep working. You can still edit the `devices` table directly in the Supabase Table Editor, or update `EECIS_DEVICE_LIST.xlsx` and regenerate the seed SQL:
   ```
   /opt/anaconda3/bin/python3 scripts/seed_from_xlsx.py
   supabase db push
   ```
-- **Adding an admin.** Supabase Table Editor → `admins` → Insert row, and put the person's `ethz.ch` address in `email` (the address they sign in with, exactly). That is the whole mechanism: `public.is_admin()` checks that table, the RLS policies on `devices` allow insert/update only when it returns true, and the site shows the Manage devices link only to those users. Remove a row to revoke access.
-- **Unlabelled devices.** 14 devices in the xlsx exist but carry no physical "Nr.x" sticker. They are stored with `labelled = false` and `unit_no = 1`, and everything that names a device (the site, the emails) leaves the " Nr.x" suffix off for them. Tick/untick **Labelled** on the Manage devices page if that ever changes.
+- **Adding an admin.** Supabase Table Editor → `admins` → Insert row, and put the person's `ethz.ch` address in `email` (the address they sign in with, exactly). That is the whole mechanism: `public.is_admin()` checks that table, the RLS policies on `devices` allow insert/update only when it returns true, and the site shows the "Edit devices (admin)" section only to those users. Remove a row to revoke access.
+- **Unlabelled devices.** 14 devices in the xlsx exist but carry no physical "Nr.x" sticker. They are stored with `labelled = false` and `unit_no = 1`, and everything that names a device (the site, the emails) leaves the " Nr.x" suffix off for them. Tick/untick **Labelled** in the admin device table if that ever changes.
 - **Who has a device.** The Devices list shows, for every device, each current or upcoming approved rental and each pending request, with the borrower's, their lab manager's and their professor's name and email. Every signed-in ETH user can see this (a deliberate decision, so people know whom to ask); it comes from the `device_status` view.
 - **Changing the lab manager email.** Update the secret and redeploy so the running functions pick it up:
   ```
@@ -125,7 +138,8 @@ Three independent test suites:
 
 ```
 supabase/migrations/     schema, RLS policies, RPCs, seed data, webhooks/cron (0001-0005),
-                         unlabelled devices + admins + device_status (0006)
+                         unlabelled devices + admins + device_status (0006),
+                         device proposals (0007)
 supabase/functions/      notify, decide, overdue-check edge functions (+ _shared/ email & SMTP helpers)
 site/                    static frontend (index.html, request.html, my.html, devices.html, app.js, helpers.js, config.js)
 tests/sql/                     SQL/RLS test suite + shim for local auth.users
