@@ -1,5 +1,7 @@
 # EECIS Device Rental
 
+**Live site: https://skethz.github.io/eecis-device-rental/**
+
 A small website that replaces the "Rental Record" sheet in `EECIS_DEVICE_LIST.xlsx`. Members of other groups sign in with their `ethz.ch` email, request to borrow an EECIS device, request extensions, and mark devices returned. The lab manager never has to log in — every decision is made by clicking a link in an email.
 
 ## The four flows
