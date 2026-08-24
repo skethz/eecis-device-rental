@@ -12,6 +12,21 @@ export interface Rental {
   device: { name: string; maker: string | null; model: string | null; unit_no: number; labelled?: boolean };
 }
 
+// A proposed device, awaiting the lab manager's approval. The device columns mirror
+// `devices`, so deviceLabel() can name it before the device row exists.
+export interface DeviceRequest {
+  id: number;
+  proposer_name: string;
+  proposer_email: string;
+  name: string;
+  maker: string | null;
+  model: string | null;
+  unit_no: number;
+  labelled: boolean;
+  note: string | null;
+  status: string;
+}
+
 export interface Mail {
   to: string[];
   subject: string;
@@ -40,8 +55,15 @@ export function deviceLabel(d: Rental["device"]): string {
   return d.labelled === false ? base : `${base} Nr.${d.unit_no}`;
 }
 
+// Values are already escaped by the callers below (they run everything user-supplied
+// through esc()), so this only lays the rows out.
+function detailTable(rows: [string, string][]): string {
+  const trs = rows.map(([k, v]) => `<tr><td style="padding:2px 8px;color:#555">${k}</td><td style="padding:2px 8px"><strong>${v}</strong></td></tr>`).join("");
+  return `<table cellspacing="0" cellpadding="0">${trs}</table>`;
+}
+
 function details(r: Rental): string {
-  const rows: [string, string][] = [
+  return detailTable([
     ["Device", esc(deviceLabel(r.device))],
     ["Borrower", esc(r.borrower_name)],
     ["Borrower email", esc(r.borrower_email)],
@@ -49,9 +71,7 @@ function details(r: Rental): string {
     ["Professor", esc(r.professor_name)],
     ["Period", `${esc(r.start_date)} &ndash; ${esc(r.end_date)}`],
     ["Request #", esc(r.id)],
-  ];
-  const trs = rows.map(([k, v]) => `<tr><td style="padding:2px 8px;color:#555">${k}</td><td style="padding:2px 8px"><strong>${v}</strong></td></tr>`).join("");
-  return `<table cellspacing="0" cellpadding="0">${trs}</table>`;
+  ]);
 }
 
 export function requestMail(r: Rental, decideUrl: string, to: string): Mail {
@@ -133,4 +153,65 @@ export function overdueMail(r: Rental, labManager: string, today: string): Mail 
     ${details(r)}
     <p>Please return the device as soon as possible and mark it as returned on the site.</p>`;
   return { to: [r.borrower_email, r.manager_email, r.professor_email, labManager], subject, html };
+}
+
+
+// --- Device proposals -------------------------------------------------------
+
+const DASH = "&mdash;";
+
+function proposalDetails(q: DeviceRequest): string {
+  return detailTable([
+    ["Proposed device", esc(deviceLabel(q))],
+    ["Name", esc(q.name)],
+    ["Maker", q.maker ? esc(q.maker) : DASH],
+    ["Model", q.model ? esc(q.model) : DASH],
+    ["Nr.", esc(q.unit_no)],
+    ["Carries a physical label", q.labelled ? "yes" : "no"],
+    ["Note", q.note ? esc(q.note) : DASH],
+    ["Proposed by", esc(q.proposer_name)],
+    ["Proposer email", esc(q.proposer_email)],
+    ["Proposal #", esc(q.id)],
+  ]);
+}
+
+// To the lab manager: a new device was bought and someone wants it in the rental list.
+export function deviceRequestMail(q: DeviceRequest, decideUrl: string, to: string): Mail {
+  const label = deviceLabel(q);
+  const subject = `[EECIS rental] New device proposed: ${subj(label)} by ${subj(q.proposer_name)}`;
+  const html = `
+    <p>A new device has been proposed for the rental list and needs your decision.</p>
+    <p>Approving adds it to the device list right away; denying leaves the list unchanged.</p>
+    ${proposalDetails(q)}
+    <p>
+      <a href="${decideUrl}&action=approve">Approve</a>
+      &nbsp;|&nbsp;
+      <a href="${decideUrl}&action=deny">Deny</a>
+    </p>`;
+  return { to: [to], subject, html };
+}
+
+// To the proposer, right after their proposal lands, so they know it went through.
+export function deviceReceiptMail(q: DeviceRequest): Mail {
+  const label = deviceLabel(q);
+  const subject = `[EECIS rental] Device proposal #${subj(q.id)} received: ${subj(label)}`;
+  const html = `
+    <p>Your proposal to add <strong>${esc(label)}</strong> to the rental list was received.</p>
+    ${proposalDetails(q)}
+    <p>The lab manager will review it; you will get another email when it is approved or denied.</p>`;
+  return { to: [q.proposer_email], subject, html };
+}
+
+export function deviceDecisionMail(q: DeviceRequest, approved: boolean): Mail {
+  const label = deviceLabel(q);
+  const verdict = approved ? "approved" : "denied";
+  const subject = `[EECIS rental] Your device proposal #${subj(q.id)} was ${subj(verdict)}`;
+  const extra = approved
+    ? `<p>It is now in the device list and can be rented.</p>`
+    : `<p>Please ask the lab manager if you would like to know why.</p>`;
+  const html = `
+    <p>Your proposal to add <strong>${esc(label)}</strong> to the rental list was <strong>${verdict}</strong>.</p>
+    ${extra}
+    ${proposalDetails(q)}`;
+  return { to: [q.proposer_email], subject, html };
 }
