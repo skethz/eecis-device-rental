@@ -81,6 +81,11 @@ Run through this checklist end to end with a real `ethz.ch` address after setup:
 8. Confirm the overdue warning arrives (borrower, their lab manager, their professor, our lab manager).
 9. Mark the rental returned from "My rentals" and confirm the return email arrives.
 
+### Lost or missed decision email
+
+Every request creates a single-use token in the `action_tokens` table. If the Approve/Deny email is lost, open Supabase → Table Editor → `action_tokens`, copy the `token` whose `target_id` is the rental id (and `used_at` is empty), and open
+`https://skethz.github.io/eecis-device-rental/decide.html?token=<token>&action=approve` (or `&action=deny`).
+
 ## Day-to-day
 
 - **Editing inventory.** Sign in as an admin and use the **Manage devices** page (`site/devices.html`, linked from the nav only for admins). It lists every device — inactive ones included — with an editable row for name, maker, model, unit number, *labelled* and *active*, plus an "Add a device" form. Devices are never deleted: untick **Active** to retire one so the rentals referencing it keep working. You can still edit the `devices` table directly in the Supabase Table Editor, or update `EECIS_DEVICE_LIST.xlsx` and regenerate the seed SQL:
