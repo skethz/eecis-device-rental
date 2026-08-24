@@ -14,7 +14,8 @@ export async function requireUser() {
   return session.user;
 }
 
-// "Am I an admin?" gates the Manage devices link and the whole devices.html page.
+// "Am I an admin?" gates the device-editing section of devices.html (everyone else only
+// sees the proposal form and their own proposals there).
 // Cached per page load (keyed by user, so signing in as someone else re-asks) —
 // it is only a hint for the UI; the real enforcement is the RLS policy on devices.
 let adminCacheUserId;

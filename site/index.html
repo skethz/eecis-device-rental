@@ -24,6 +24,7 @@
     <li><strong>Extensions:</strong> If you wish to extend the rental period, you must submit another request to our lab manager (via <em>My rentals</em>).</li>
     <li><strong>Returns:</strong> When returning the device, you must notify our lab manager by marking it returned in <em>My rentals</em>.</li>
     <li><strong>Overdue warnings:</strong> If the rental period expires and no return is recorded in the system, a warning email is sent automatically to you, your lab manager and professor, and our lab manager &mdash; every day until the return is recorded.</li>
+    <li><strong>New devices:</strong> Group members who purchase a device can propose it on the <em>Devices</em> page; it appears in the list once our lab manager approves it.</li>
   </ul>
 </aside>
   <p>Sign in with your ETH email address to browse and request devices.</p>
@@ -55,6 +56,7 @@
     <li><strong>Extensions:</strong> If you wish to extend the rental period, you must submit another request to our lab manager (via <em>My rentals</em>).</li>
     <li><strong>Returns:</strong> When returning the device, you must notify our lab manager by marking it returned in <em>My rentals</em>.</li>
     <li><strong>Overdue warnings:</strong> If the rental period expires and no return is recorded in the system, a warning email is sent automatically to you, your lab manager and professor, and our lab manager &mdash; every day until the return is recorded.</li>
+    <li><strong>New devices:</strong> Group members who purchase a device can propose it on the <em>Devices</em> page; it appears in the list once our lab manager approves it.</li>
   </ul>
 </aside>
   <p>Signed in as <strong id="user-email"></strong></p>
@@ -69,7 +71,7 @@
 </section>
 
 <script type="module">
-import { sb, deviceLabel, isAdmin, isEthz, sortDevices, sortStatusRows, statusLine, $ } from "./app.js";
+import { sb, deviceLabel, isEthz, sortDevices, sortStatusRows, statusLine, $ } from "./app.js";
 
 const signedOutEl = $("#signed-out");
 const signedInEl = $("#signed-in");
@@ -250,18 +252,6 @@ async function loadDevices() {
   table.hidden = false;
 }
 
-// The admin check is a round trip, so the nav renders without it and the link is
-// added once the answer arrives — but only if the page is still showing that user.
-async function addAdminLink(user) {
-  if (!(await isAdmin(user))) return;
-  if (renderedUserId !== user.id || $("#manage-devices")) return;
-  const a = document.createElement("a");
-  a.id = "manage-devices";
-  a.href = "./devices.html";
-  a.textContent = "Manage devices";
-  nav.prepend(a);
-}
-
 // Which user the page is currently showing, so a repeated auth event for the same
 // user (INITIAL_SESSION followed by a token refresh, ...) does not reload the device
 // list a second time.
@@ -275,12 +265,11 @@ function render(session) {
     $("#user-email").textContent = user.email;
     if (renderedUserId === user.id) return;
     renderedUserId = user.id;
-    nav.innerHTML = `<a href="./my.html">My rentals</a> <a href="#" id="signout">Sign out</a>`;
+    nav.innerHTML = `<a href="./devices.html">Devices / propose a device</a> <a href="./my.html">My rentals</a> <a href="#" id="signout">Sign out</a>`;
     $("#signout").addEventListener("click", async (e) => {
       e.preventDefault();
       await sb.auth.signOut(); // the auth state change re-renders the signed-out view
     });
-    addAdminLink(user);
     loadDevices();
   } else {
     renderedUserId = null;

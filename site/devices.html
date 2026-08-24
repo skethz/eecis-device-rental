@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>Manage devices — EECIS Device Rental</title>
+<title>Devices — EECIS Device Rental</title>
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -16,11 +16,59 @@
   <a class="logo-link" href="./index.html"><img src="./eecis_logo.png" alt="EECIS" height="28"></a>
 </header>
 
-<h2>Manage devices</h2>
+<h2>Devices</h2>
 <p id="status" class="muted">Loading…</p>
 
+<section id="propose-ui" hidden>
+  <h3>Propose a new device</h3>
+  <p class="muted">
+    Bought a device for the group? Propose it here. Our lab manager gets an email with the
+    details and the device joins the rental list as soon as it is approved.
+  </p>
+  <form id="propose-form">
+    <label>Your name
+      <input type="text" id="propose-proposer-name" required>
+    </label>
+    <label>Your email
+      <input type="email" id="propose-proposer-email" readonly>
+    </label>
+    <label>Device name
+      <input type="text" id="propose-name" required>
+    </label>
+    <label>Maker
+      <input type="text" id="propose-maker" placeholder="optional">
+    </label>
+    <label>Model
+      <input type="text" id="propose-model" placeholder="optional">
+    </label>
+    <label>Nr.
+      <input type="number" id="propose-unit-no" value="1" min="1" step="1" required>
+    </label>
+    <label class="inline">
+      <input type="checkbox" id="propose-labelled" checked>
+      Carries a physical “Nr.x” label
+    </label>
+    <label>Note for the lab manager
+      <textarea id="propose-note" rows="3" placeholder="optional"></textarea>
+    </label>
+    <button type="submit" id="propose-submit">Send proposal</button>
+    <p id="propose-msg"></p>
+  </form>
+
+  <h3 id="proposals-heading">Your proposals</h3>
+  <p id="proposals-status" class="muted">Loading…</p>
+  <table id="proposals-table" hidden>
+    <thead>
+      <tr id="proposals-head"></tr>
+    </thead>
+    <tbody id="proposals-body"></tbody>
+  </table>
+</section>
+
 <section id="admin-ui" hidden>
-  <h3>Add a device</h3>
+  <h3>Edit devices (admin)</h3>
+
+  <h4>Add a device</h4>
   <form id="add-form">
     <label>Name
       <input type="text" id="add-name" required>
@@ -46,7 +94,7 @@
     <p id="add-msg"></p>
   </form>
 
-  <h3>All devices</h3>
+  <h4>All devices</h4>
   <p class="muted">
     Devices are never deleted — untick <strong>Active</strong> to retire one, so the rentals
     that reference it keep working. Untick <strong>Labelled</strong> for a device that has no
@@ -64,10 +112,22 @@
 import { sb, requireUser, isAdmin, sortDevices, $ } from "./app.js";
 
 const statusEl = $("#status");
+const proposeUi = $("#propose-ui");
 const adminUi = $("#admin-ui");
 const body = $("#devices-body");
 const addForm = $("#add-form");
 const addMsg = $("#add-msg");
+const proposeForm = $("#propose-form");
+const proposeMsg = $("#propose-msg");
+const proposalsStatus = $("#proposals-status");
+const proposalsTable = $("#proposals-table");
+const proposalsHead = $("#proposals-head");
+const proposalsBody = $("#proposals-body");
+
+// Set once the session is known; the insert policy pins both to the signed-in user.
+let currentUser = null;
+// Admins read every proposal (RLS lets them), so the list gains a "Proposer" column.
+let admin = false;
 
 function say(el, text, cls) {
   el.textContent = text;
@@ -94,6 +154,98 @@ function cellInput(type, value) {
   td.appendChild(input);
   return { td, input };
 }
+
+function cell(text, cls) {
+  const td = document.createElement("td");
+  td.textContent = text;
+  if (cls) td.className = cls;
+  return td;
+}
+
+// --- Proposing a device -----------------------------------------------------
+
+function renderProposalRow(p) {
+  const tr = document.createElement("tr");
+  const name = [p.name, p.maker, p.model].filter(Boolean).join(" ");
+  const cells = [cell(name)];
+  // An unlabelled device carries no physical "Nr.x" sticker, so its number is
+  // recorded but never shown as part of the name.
+  cells.push(cell(p.labelled ? String(p.unit_no) : `${p.unit_no} (no label)`));
+  if (admin) cells.push(cell(`${p.proposer_name} (${p.proposer_email})`));
+
+  const tdStatus = document.createElement("td");
+  const badge = document.createElement("span");
+  badge.className = `badge ${p.status}`;
+  badge.textContent = p.status;
+  tdStatus.appendChild(badge);
+  cells.push(tdStatus);
+
+  cells.push(cell(String(p.created_at ?? "").slice(0, 10), "muted"));
+  tr.append(...cells);
+  return tr;
+}
+
+async function loadProposals() {
+  proposalsStatus.hidden = false;
+  say(proposalsStatus, "Loading…", "muted");
+  proposalsTable.hidden = true;
+
+  // RLS decides the scope: your own proposals, or every proposal if you are an admin.
+  const { data, error } = await sb
+    .from("device_requests")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) return say(proposalsStatus, `Could not load proposals: ${error.message}`, "error");
+
+  proposalsHead.textContent = "";
+  const headings = admin ? ["Device", "Nr.", "Proposer", "Status", "Proposed"] : ["Device", "Nr.", "Status", "Proposed"];
+  for (const h of headings) {
+    const th = document.createElement("th");
+    th.textContent = h;
+    proposalsHead.appendChild(th);
+  }
+
+  proposalsBody.textContent = "";
+  if (data.length === 0) {
+    return say(proposalsStatus, admin ? "No devices have been proposed yet." : "You have not proposed any devices yet.", "muted");
+  }
+  for (const p of data) proposalsBody.appendChild(renderProposalRow(p));
+  proposalsStatus.hidden = true;
+  proposalsTable.hidden = false;
+}
+
+proposeForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  say(proposeMsg, "", "");
+  const row = {
+    user_id: currentUser.id,
+    proposer_name: $("#propose-proposer-name").value.trim(),
+    proposer_email: currentUser.email,
+    name: $("#propose-name").value.trim(),
+    maker: orNull($("#propose-maker").value),
+    model: orNull($("#propose-model").value),
+    unit_no: Number($("#propose-unit-no").value),
+    labelled: $("#propose-labelled").checked,
+    note: orNull($("#propose-note").value),
+  };
+  if (!row.proposer_name) return say(proposeMsg, "Please give your name.", "error");
+  if (!row.name) return say(proposeMsg, "Device name cannot be empty.", "error");
+  if (!Number.isInteger(row.unit_no) || row.unit_no < 1) {
+    return say(proposeMsg, "Nr. must be a whole number of 1 or more.", "error");
+  }
+  const submit = $("#propose-submit");
+  submit.disabled = true;
+  // .select() so a silently blocked write (RLS) is reported instead of looking like success.
+  const { error } = await sb.from("device_requests").insert(row).select("id").single();
+  submit.disabled = false;
+  if (error) return say(proposeMsg, error.message, "error");
+  say(proposeMsg, "Proposal sent to the lab manager; you'll get an email when it's decided.", "notice");
+  proposeForm.reset();
+  $("#propose-proposer-email").value = currentUser.email;
+  await loadProposals();
+});
+
+// --- Editing the device list (admins only) ----------------------------------
 
 function renderRow(d) {
   const tr = document.createElement("tr");
@@ -150,7 +302,6 @@ async function loadDevices() {
   }
   body.textContent = "";
   for (const d of sortDevices(data)) body.appendChild(renderRow(d));
-  statusEl.hidden = true;
   adminUi.hidden = false;
 }
 
@@ -180,17 +331,18 @@ addForm.addEventListener("submit", async (e) => {
 });
 
 async function init() {
-  let user;
   try {
-    user = await requireUser();
+    currentUser = await requireUser();
   } catch {
     return; // requireUser() already redirected to index.html
   }
-  if (!(await isAdmin(user))) {
-    say(statusEl, "Admins only. Ask the lab manager if you need access to this page.", "error");
-    return;
-  }
-  await loadDevices();
+  $("#propose-proposer-email").value = currentUser.email;
+  admin = await isAdmin(currentUser);
+  if (admin) $("#proposals-heading").textContent = "All proposals";
+  statusEl.hidden = true;
+  proposeUi.hidden = false;
+  await loadProposals();
+  if (admin) await loadDevices();
 }
 
 init();

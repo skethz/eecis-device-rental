@@ -89,13 +89,20 @@ label {
   font-size: 0.95em;
 }
 
-input, select, button {
+input, select, textarea, button {
   font: inherit;
   padding: 0.4em 0.5em;
   background: #121A28;
   border: 1px solid #2A3547;
   color: #E6EAF0;
   border-radius: 4px;
+}
+
+/* The note on a device proposal: let it grow downwards, never sideways out of the form. */
+textarea {
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 button {

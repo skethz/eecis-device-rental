@@ -11,7 +11,7 @@
 <header>
   <div class="header-text">
     <h1>EECIS Device Rental</h1>
-    <nav id="nav"><a href="./index.html">Devices</a></nav>
+    <nav><a href="./index.html">Devices</a> <a href="./devices.html">Devices / propose a device</a></nav>
   </div>
   <a class="logo-link" href="./index.html"><img src="./eecis_logo.png" alt="EECIS" height="28"></a>
 </header>
@@ -26,20 +26,11 @@
 </table>
 
 <script type="module">
-import { sb, requireUser, deviceLabel, isAdmin, todayLocal, addDays, $ } from "./app.js";
+import { sb, requireUser, deviceLabel, todayLocal, addDays, $ } from "./app.js";
 
 const statusEl = $("#status");
 const table = $("#rentals-table");
 const body = $("#rentals-body");
-
-async function addAdminLink(user) {
-  if (!(await isAdmin(user)) || $("#manage-devices")) return;
-  const a = document.createElement("a");
-  a.id = "manage-devices";
-  a.href = "./devices.html";
-  a.textContent = "Manage devices";
-  $("#nav").appendChild(a);
-}
 
 async function load() {
   statusEl.hidden = false;
@@ -47,13 +38,11 @@ async function load() {
   statusEl.className = "muted";
   table.hidden = true;
 
-  let user;
   try {
-    user = await requireUser();
+    await requireUser();
   } catch {
     return; // requireUser() already redirected to index.html
   }
-  addAdminLink(user);
 
   const { data: rentals, error } = await sb
     .from("rentals")
