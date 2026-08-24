@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { requestMail, extensionMail, returnMail, receiptMail, type Mail, type Rental } from "../_shared/email.ts";
+import { requestMail, extensionMail, returnMail, receiptMail, deviceRequestMail, deviceReceiptMail,
+  type DeviceRequest, type Mail, type Rental } from "../_shared/email.ts";
 import { createTransport, sendEmail, smtpConfigFromEnv } from "../_shared/mailer.ts";
 
 export interface Deps { db: any; send: (m: Mail) => Promise<void>; labManager: string; siteUrl: string }
@@ -34,6 +35,16 @@ export async function handleNotify(p: any, d: Deps): Promise<Response> {
     await d.send(extensionMail(r, p.record.new_end_date, `${d.siteUrl}/decide.html?token=${t}`, d.labManager));
     try {
       await d.send(receiptMail(r, "extension", p.record.new_end_date));
+    } catch (e) {
+      console.error(e);
+    }
+  } else if (p.table === "device_requests" && p.type === "INSERT") {
+    // Unlike a rental there is nothing to join in: the webhook payload is the whole row.
+    const q = p.record as DeviceRequest;
+    const t = await newToken(d.db, "device", q.id);
+    await d.send(deviceRequestMail(q, `${d.siteUrl}/decide.html?token=${t}`, d.labManager));
+    try {
+      await d.send(deviceReceiptMail(q));
     } catch (e) {
       console.error(e);
     }
