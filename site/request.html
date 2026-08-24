@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Request a device — EECIS Device Rental</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header>
+  <div class="header-text">
+    <h1>EECIS Device Rental</h1>
+    <nav><a href="./index.html">Devices</a> <a href="./my.html">My rentals</a></nav>
+  </div>
+  <a class="logo-link" href="./index.html"><img src="./eecis_logo.png" alt="EECIS" height="28"></a>
+</header>
+
+<h2>Request a device</h2>
+
+<aside class="rules" role="note">
+  <p class="rules-title">&#9888; Rental rules &mdash; please read before you request</p>
+  <ul>
+    <li><strong>Initial request:</strong> To rent a device from our group, a user from another group must request approval from our lab manager (the current lab manager of Prof. Taekwang Jang's group is Seungki Hong, hongse&#64;ethz.ch). The request must specify the rental period and give your name and the names of your own lab manager and professor.</li>
+    <li><strong>Extensions:</strong> If you wish to extend the rental period, you must submit another request to our lab manager (via <em>My rentals</em>).</li>
+    <li><strong>Returns:</strong> When returning the device, you must notify our lab manager by marking it returned in <em>My rentals</em>.</li>
+    <li><strong>Overdue warnings:</strong> If the rental period expires and no return is recorded in the system, a warning email is sent automatically to you, your lab manager and professor, and our lab manager &mdash; every day until the return is recorded.</li>
+  </ul>
+</aside>
+<p id="load-status" class="muted">Loading…</p>
+
+<form id="request-form" hidden>
+  <label>Device
+    <select id="device" required></select>
+  </label>
+
+  <label>Start date
+    <input type="date" id="start" required>
+  </label>
+
+  <label>End date
+    <input type="date" id="end" required>
+  </label>
+
+  <label>Your name
+    <input type="text" id="borrower_name" required>
+  </label>
+
+  <label>Your email
+    <input type="email" id="borrower_email" readonly>
+  </label>
+
+  <label>Your lab manager's name
+    <input type="text" id="manager_name" required>
+  </label>
+
+  <label>Your lab manager's email
+    <input type="email" id="manager_email" required>
+  </label>
+
+  <label>Professor's name
+    <input type="text" id="professor_name" required>
+  </label>
+
+  <label>Professor's email
+    <input type="email" id="professor_email" required>
+  </label>
+
+  <p id="reason" class="error"></p>
+  <button type="submit" id="submit" disabled>Send request</button>
+  <p id="result"></p>
+</form>
+
+<script type="module">
+import { sb, requireUser, deviceLabel, overlaps, sortDevices, todayLocal, $ } from "./app.js";
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+const loadStatus = $("#load-status");
+const form = $("#request-form");
+const submitBtn = $("#submit");
+const reasonEl = $("#reason");
+const resultEl = $("#result");
+
+const deviceSelect = $("#device");
+const startInput = $("#start");
+const endInput = $("#end");
+
+let devices = [];
+let user;
+
+function selectedDevice() {
+  return devices.find((d) => String(d.device_id) === deviceSelect.value);
+}
+
+// Keep the native date pickers honest: no past start date, and no end date before
+// the chosen start. (validate() still re-checks, since min only guides the picker.)
+function syncDateBounds() {
+  const today = todayLocal();
+  startInput.min = today;
+  endInput.min = startInput.value || today;
+}
+
+function validate() {
+  syncDateBounds();
+  const fields = [
+    $("#device").value,
+    startInput.value,
+    endInput.value,
+    $("#borrower_name").value.trim(),
+    $("#manager_name").value.trim(),
+    $("#manager_email").value.trim(),
+    $("#professor_name").value.trim(),
+    $("#professor_email").value.trim(),
+  ];
+  if (fields.some((f) => !f)) {
+    reasonEl.textContent = "";
+    submitBtn.disabled = true;
+    return;
+  }
+  if (!EMAIL_RE.test($("#manager_email").value.trim())) {
+    reasonEl.textContent = "Lab manager email looks invalid.";
+    submitBtn.disabled = true;
+    return;
+  }
+  if (!EMAIL_RE.test($("#professor_email").value.trim())) {
+    reasonEl.textContent = "Professor email looks invalid.";
+    submitBtn.disabled = true;
+    return;
+  }
+  if (endInput.value < startInput.value) {
+    reasonEl.textContent = "End date must be on or after the start date.";
+    submitBtn.disabled = true;
+    return;
+  }
+  const device = selectedDevice();
+  if (device && overlaps(device.busy, startInput.value, endInput.value)) {
+    reasonEl.textContent = "This device is already booked over part of that date range.";
+    submitBtn.disabled = true;
+    return;
+  }
+  reasonEl.textContent = "";
+  submitBtn.disabled = false;
+}
+
+form.addEventListener("input", validate);
+form.addEventListener("change", validate);
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  submitBtn.disabled = true;
+  resultEl.textContent = "Sending…";
+  resultEl.className = "muted";
+
+  const { error } = await sb.from("rentals").insert({
+    device_id: Number(deviceSelect.value),
+    user_id: user.id,
+    borrower_name: $("#borrower_name").value.trim(),
+    borrower_email: user.email,
+    manager_name: $("#manager_name").value.trim(),
+    manager_email: $("#manager_email").value.trim(),
+    professor_name: $("#professor_name").value.trim(),
+    professor_email: $("#professor_email").value.trim(),
+    start_date: startInput.value,
+    end_date: endInput.value,
+  });
+
+  if (error) {
+    resultEl.textContent = error.message;
+    resultEl.className = "error";
+    submitBtn.disabled = false;
+    return;
+  }
+
+  form.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
+  resultEl.innerHTML = `<span class="notice">Request sent to the lab manager; you'll get an email when it's decided. <a href="./my.html">View my rentals</a></span>`;
+  resultEl.className = "";
+});
+
+async function init() {
+  try {
+    user = await requireUser();
+  } catch {
+    return; // requireUser() already redirected to index.html
+  }
+  $("#borrower_email").value = user.email;
+
+  const { data, error } = await sb.from("device_availability").select("*");
+  if (error) {
+    loadStatus.textContent = `Could not load devices: ${error.message}`;
+    loadStatus.className = "error";
+    return;
+  }
+  devices = sortDevices(data);
+
+  const params = new URLSearchParams(location.search);
+  const preselect = params.get("device");
+
+  deviceSelect.innerHTML = "";
+  for (const d of devices) {
+    const opt = document.createElement("option");
+    opt.value = d.device_id;
+    opt.textContent = deviceLabel(d);
+    if (preselect && String(d.device_id) === preselect) opt.selected = true;
+    deviceSelect.appendChild(opt);
+  }
+
+  loadStatus.hidden = true;
+  form.hidden = false;
+  syncDateBounds();
+  validate();
+}
+
+init();
+</script>
+</body>
+</html>

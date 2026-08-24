@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Confirm decision — EECIS Device Rental</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header>
+  <div class="header-text">
+    <h1>EECIS Device Rental</h1>
+  </div>
+  <a class="logo-link" href="./index.html"><img src="./eecis_logo.png" alt="EECIS" height="28"></a>
+</header>
+
+<h2 id="heading">Confirm</h2>
+<p id="message" class="muted">Checking link…</p>
+<button type="button" id="confirm-btn" hidden></button>
+
+<script type="module">
+import { SUPABASE_URL } from "./config.js";
+
+const $ = (s) => document.querySelector(s);
+const heading = $("#heading");
+const messageEl = $("#message");
+const btn = $("#confirm-btn");
+
+const params = new URLSearchParams(location.search);
+const token = params.get("token");
+const action = params.get("action");
+
+function showError(title, text) {
+  heading.textContent = title;
+  messageEl.textContent = text;
+  messageEl.className = "error";
+  btn.hidden = true;
+}
+
+function sentence(noun) {
+  return `You are about to ${action} ${noun}. Nothing is changed until you press the button.`;
+}
+
+async function submit() {
+  btn.disabled = true;
+  messageEl.textContent = "Submitting…";
+  messageEl.className = "muted";
+  let data;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/decide`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, action }),
+    });
+    data = await res.json();
+  } catch {
+    messageEl.textContent = "Could not reach the server. Please try again.";
+    messageEl.className = "error";
+    btn.disabled = false;
+    return;
+  }
+  heading.textContent = data.title || (data.ok ? "Done" : "Error");
+  messageEl.textContent = data.message || "";
+  messageEl.className = data.ok ? "notice" : "error";
+  btn.hidden = true;
+}
+
+async function init() {
+  if (!token || (action !== "approve" && action !== "deny")) {
+    showError("Bad link", "This link is missing information and cannot be used.");
+    return;
+  }
+
+  heading.textContent = action === "approve" ? "Confirm approve" : "Confirm deny";
+  messageEl.textContent = sentence("this request");
+  messageEl.className = "";
+  btn.textContent = heading.textContent;
+  btn.hidden = false;
+  btn.addEventListener("click", submit);
+
+  // Best-effort early check so an already-used link says so before the click; if this
+  // fails for any reason the button above still works, since the POST re-validates.
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/decide?token=${encodeURIComponent(token)}`);
+    if (res.status === 410) {
+      showError("Link expired", "This link was already used or is invalid.");
+      return;
+    }
+    const data = await res.json();
+    if (data.ok && data.target_id != null) {
+      const noun = data.kind === "extension" ? `extension request #${data.target_id}` : `request #${data.target_id}`;
+      messageEl.textContent = sentence(noun);
+    }
+  } catch {
+    // ignore network errors here
+  }
+}
+
+init();
+</script>
+</body>
+</html>

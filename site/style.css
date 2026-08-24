@@ -1,0 +1,189 @@
+:root {
+  color-scheme: dark;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  max-width: 60em;
+  margin: 2em auto;
+  padding: 0 1em;
+  line-height: 1.4;
+  background: #0D131F;
+  color: #E6EAF0;
+}
+
+a {
+  color: #8AB4F8;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5em 1.5em;
+  border-bottom: 2px solid #1C2534;
+  padding-bottom: 0.5em;
+  margin-bottom: 1.5em;
+}
+
+header .header-text {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5em 1.5em;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.3em;
+}
+
+header .logo-link {
+  line-height: 0;
+}
+
+header .logo-link img {
+  display: block;
+}
+
+nav a {
+  margin-left: 1em;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+th, td {
+  border: 1px solid #1C2534;
+  padding: 0.5em 0.7em;
+  text-align: left;
+  vertical-align: middle;
+}
+
+th {
+  background: #121A28;
+}
+
+tbody tr:nth-child(even) {
+  background: #121A28;
+}
+
+.busy { color: #F87171; }
+.ok { color: #4ADE80; }
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9em;
+  max-width: 30em;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  font-size: 0.95em;
+}
+
+input, select, button {
+  font: inherit;
+  padding: 0.4em 0.5em;
+  background: #121A28;
+  border: 1px solid #2A3547;
+  color: #E6EAF0;
+  border-radius: 4px;
+}
+
+button {
+  cursor: pointer;
+  width: fit-content;
+}
+
+button[type="submit"] {
+  background: #3B82F6;
+  border-color: #3B82F6;
+  color: #fff;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  color: #F87171;
+  white-space: pre-line;
+}
+
+.notice {
+  display: block;
+  line-height: 1.5;
+  color: #4ADE80;
+  background: #121A28;
+  padding: 0.7em 1em;
+  border-radius: 4px;
+  border: 1px solid #1C2534;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1em 0.6em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  background: #1C2534;
+  color: #E6EAF0;
+}
+
+.badge.pending { background: #3B2F12; color: #FBBF24; }
+.badge.approved { background: #123B1F; color: #4ADE80; }
+.badge.denied { background: #3B1414; color: #F87171; }
+.badge.returned { background: #1C2534; color: #9AA4B2; }
+
+.muted {
+  color: #9AA4B2;
+  font-size: 0.9em;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Checkbox rows read better with the box next to its wording, not above it. */
+label.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4em;
+}
+
+/* The device manager puts an input in almost every cell. */
+td input[type="text"],
+td input[type="number"] {
+  width: 100%;
+  min-width: 4em;
+  box-sizing: border-box;
+}
+
+td p {
+  margin: 0.3em 0 0;
+  font-size: 0.85em;
+}
+
+.rules {
+  margin: 1em 0 1.5em;
+  padding: 0.9em 1.2em;
+  background: #2A1F0E;
+  border: 1px solid #B45309;
+  border-left: 5px solid #F59E0B;
+  border-radius: 4px;
+  color: #E6EAF0;
+}
+.rules-title { margin: 0 0 0.5em; font-weight: 600; color: #F97316; }
+.rules ul { margin: 0; padding-left: 1.3em; }
+.rules li { margin: 0.35em 0; line-height: 1.5; }

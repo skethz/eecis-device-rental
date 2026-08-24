@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>EECIS Device Rental</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header>
+  <div class="header-text">
+    <h1>EECIS Device Rental</h1>
+    <nav id="nav"></nav>
+  </div>
+  <a class="logo-link" href="./index.html"><img src="./eecis_logo.png" alt="EECIS" height="28"></a>
+</header>
+
+<section id="signed-out">
+<aside class="rules" role="note">
+  <p class="rules-title">&#9888; Rental rules &mdash; please read before you request</p>
+  <ul>
+    <li><strong>Initial request:</strong> To rent a device from our group, a user from another group must request approval from our lab manager (the current lab manager of Prof. Taekwang Jang's group is Seungki Hong, hongse&#64;ethz.ch). The request must specify the rental period and give your name and the names of your own lab manager and professor.</li>
+    <li><strong>Extensions:</strong> If you wish to extend the rental period, you must submit another request to our lab manager (via <em>My rentals</em>).</li>
+    <li><strong>Returns:</strong> When returning the device, you must notify our lab manager by marking it returned in <em>My rentals</em>.</li>
+    <li><strong>Overdue warnings:</strong> If the rental period expires and no return is recorded in the system, a warning email is sent automatically to you, your lab manager and professor, and our lab manager &mdash; every day until the return is recorded.</li>
+  </ul>
+</aside>
+  <p>Sign in with your ETH email address to browse and request devices.</p>
+  <form id="signin-form">
+    <label>Email
+      <input type="email" id="email" required placeholder="you@ethz.ch">
+    </label>
+    <button type="submit">Send code</button>
+  </form>
+  <form id="verify-form" hidden>
+    <p>We emailed an 8-digit code to <strong id="signin-email"></strong>.</p>
+    <label>Code
+      <input type="text" id="code" required inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+    </label>
+    <button type="submit">Sign in</button>
+    <div class="row-actions">
+      <button type="button" id="resend-code">Resend code</button>
+      <a href="#" id="use-different-email">Use a different email</a>
+    </div>
+  </form>
+  <p id="signin-msg"></p>
+</section>
+
+<section id="signed-in" hidden>
+<aside class="rules" role="note">
+  <p class="rules-title">&#9888; Rental rules &mdash; please read before you request</p>
+  <ul>
+    <li><strong>Initial request:</strong> To rent a device from our group, a user from another group must request approval from our lab manager (the current lab manager of Prof. Taekwang Jang's group is Seungki Hong, hongse&#64;ethz.ch). The request must specify the rental period and give your name and the names of your own lab manager and professor.</li>
+    <li><strong>Extensions:</strong> If you wish to extend the rental period, you must submit another request to our lab manager (via <em>My rentals</em>).</li>
+    <li><strong>Returns:</strong> When returning the device, you must notify our lab manager by marking it returned in <em>My rentals</em>.</li>
+    <li><strong>Overdue warnings:</strong> If the rental period expires and no return is recorded in the system, a warning email is sent automatically to you, your lab manager and professor, and our lab manager &mdash; every day until the return is recorded.</li>
+  </ul>
+</aside>
+  <p>Signed in as <strong id="user-email"></strong></p>
+  <h2>Devices</h2>
+  <p id="devices-status" class="muted">Loading devices…</p>
+  <table id="devices-table" hidden>
+    <thead>
+      <tr><th>Device</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody id="devices-body"></tbody>
+  </table>
+</section>
+
+<script type="module">
+import { sb, deviceLabel, isAdmin, isEthz, sortDevices, sortStatusRows, statusLine, $ } from "./app.js";
+
+const signedOutEl = $("#signed-out");
+const signedInEl = $("#signed-in");
+const nav = $("#nav");
+const signinForm = $("#signin-form");
+const verifyForm = $("#verify-form");
+const signinMsg = $("#signin-msg");
+const signinEmailEl = $("#signin-email");
+const resendBtn = $("#resend-code");
+const useDifferentEmailLink = $("#use-different-email");
+
+let pendingEmail = "";
+let resendTimer = null;
+
+const RESEND_COOLDOWN_S = 300;
+
+function startResendCooldown() {
+  clearInterval(resendTimer);
+  let remaining = RESEND_COOLDOWN_S;
+  resendBtn.disabled = true;
+  resendBtn.textContent = `Resend code (${remaining}s)`;
+  resendTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(resendTimer);
+      resendBtn.disabled = false;
+      resendBtn.textContent = "Resend code";
+    } else {
+      resendBtn.textContent = `Resend code (${remaining}s)`;
+    }
+  }, 1000);
+}
+
+function showStep1() {
+  clearInterval(resendTimer);
+  pendingEmail = "";
+  $("#code").value = "";
+  verifyForm.hidden = true;
+  signinForm.hidden = false;
+  signinMsg.textContent = "";
+  signinMsg.className = "";
+}
+
+function showStep2(email) {
+  pendingEmail = email;
+  signinEmailEl.textContent = email;
+  signinForm.hidden = true;
+  verifyForm.hidden = false;
+  signinMsg.textContent = "";
+  signinMsg.className = "";
+  startResendCooldown();
+}
+
+signinForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = $("#email").value.trim();
+  signinMsg.textContent = "";
+  signinMsg.className = "";
+  if (!isEthz(email)) {
+    signinMsg.textContent = "Please use your ethz.ch email address.";
+    signinMsg.className = "error";
+    return;
+  }
+  const submitBtn = signinForm.querySelector("button");
+  submitBtn.disabled = true;
+  signinMsg.textContent = "Sending code…";
+  const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+  submitBtn.disabled = false;
+  if (error) {
+    signinMsg.textContent = error.message;
+    signinMsg.className = "error";
+    return;
+  }
+  showStep2(email);
+});
+
+verifyForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = $("#code").value.trim();
+  signinMsg.textContent = "";
+  signinMsg.className = "";
+  const submitBtn = verifyForm.querySelector("button[type=submit]");
+  submitBtn.disabled = true;
+  const { error } = await sb.auth.verifyOtp({ email: pendingEmail, token: code, type: "email" });
+  submitBtn.disabled = false;
+  if (error) {
+    signinMsg.textContent = error.message;
+    signinMsg.className = "error";
+  }
+  // On success, onAuthStateChange fires and render() below takes over.
+});
+
+resendBtn.addEventListener("click", async () => {
+  signinMsg.textContent = "";
+  signinMsg.className = "";
+  resendBtn.disabled = true;
+  const { error } = await sb.auth.signInWithOtp({ email: pendingEmail, options: { shouldCreateUser: true } });
+  if (error) {
+    signinMsg.textContent = error.message;
+    signinMsg.className = "error";
+    resendBtn.disabled = false;
+    resendBtn.textContent = "Resend code";
+    return;
+  }
+  signinMsg.textContent = "Code resent.";
+  signinMsg.className = "notice";
+  startResendCooldown();
+});
+
+useDifferentEmailLink.addEventListener("click", (e) => {
+  e.preventDefault();
+  showStep1();
+});
+
+async function loadDevices() {
+  const status = $("#devices-status");
+  const table = $("#devices-table");
+  const body = $("#devices-body");
+  status.hidden = false;
+  status.textContent = "Loading devices…";
+  status.className = "muted";
+  table.hidden = true;
+
+  const { data, error } = await sb.from("device_availability").select("*");
+  if (error) {
+    status.textContent = `Could not load devices: ${error.message}`;
+    status.className = "error";
+    return;
+  }
+
+  // Current and upcoming rentals of every device, so each row can name who has it.
+  const { data: statusRows, error: statusError } = await sb.from("device_status").select("*");
+  if (statusError) {
+    status.textContent = `Could not load device status: ${statusError.message}`;
+    status.className = "error";
+    return;
+  }
+  const byDevice = new Map();
+  for (const r of statusRows ?? []) {
+    if (!byDevice.has(r.device_id)) byDevice.set(r.device_id, []);
+    byDevice.get(r.device_id).push(r);
+  }
+
+  body.innerHTML = "";
+  if (data.length === 0) {
+    status.textContent = "No devices found.";
+    status.className = "muted";
+    status.hidden = false;
+    table.hidden = true;
+    return;
+  }
+  for (const d of sortDevices(data)) {
+    const tr = document.createElement("tr");
+    const tdName = document.createElement("td");
+    tdName.textContent = deviceLabel(d);
+    const tdStatus = document.createElement("td");
+    const rows = byDevice.get(d.device_id) ?? [];
+    if (rows.length === 0) {
+      tdStatus.textContent = "Available";
+      tdStatus.className = "ok";
+    } else {
+      for (const r of sortStatusRows(rows)) {
+        const line = document.createElement("div");
+        line.className = r.status === "approved" ? "busy" : "muted";
+        line.textContent = statusLine(r);
+        tdStatus.appendChild(line);
+      }
+    }
+    const tdAction = document.createElement("td");
+    const a = document.createElement("a");
+    a.href = `./request.html?device=${d.device_id}`;
+    a.textContent = "Request";
+    tdAction.appendChild(a);
+    tr.append(tdName, tdStatus, tdAction);
+    body.appendChild(tr);
+  }
+  status.hidden = true;
+  table.hidden = false;
+}
+
+// The admin check is a round trip, so the nav renders without it and the link is
+// added once the answer arrives — but only if the page is still showing that user.
+async function addAdminLink(user) {
+  if (!(await isAdmin(user))) return;
+  if (renderedUserId !== user.id || $("#manage-devices")) return;
+  const a = document.createElement("a");
+  a.id = "manage-devices";
+  a.href = "./devices.html";
+  a.textContent = "Manage devices";
+  nav.prepend(a);
+}
+
+// Which user the page is currently showing, so a repeated auth event for the same
+// user (INITIAL_SESSION followed by a token refresh, ...) does not reload the device
+// list a second time.
+let renderedUserId = null;
+
+function render(session) {
+  const user = session?.user ?? null;
+  if (user) {
+    signedOutEl.hidden = true;
+    signedInEl.hidden = false;
+    $("#user-email").textContent = user.email;
+    if (renderedUserId === user.id) return;
+    renderedUserId = user.id;
+    nav.innerHTML = `<a href="./my.html">My rentals</a> <a href="#" id="signout">Sign out</a>`;
+    $("#signout").addEventListener("click", async (e) => {
+      e.preventDefault();
+      await sb.auth.signOut(); // the auth state change re-renders the signed-out view
+    });
+    addAdminLink(user);
+    loadDevices();
+  } else {
+    renderedUserId = null;
+    signedOutEl.hidden = false;
+    signedInEl.hidden = true;
+    nav.innerHTML = "";
+  }
+}
+
+// The onAuthStateChange callback runs inside the client's auth lock: calling supabase
+// from it (getSession, queries) can deadlock, so hand the work to a fresh task.
+sb.auth.onAuthStateChange((_e, session) => setTimeout(() => render(session), 0));
+sb.auth.getSession().then(({ data: { session } }) => render(session));
+</script>
+</body>
+</html>

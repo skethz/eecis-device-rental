@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>My rentals — EECIS Device Rental</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header>
+  <div class="header-text">
+    <h1>EECIS Device Rental</h1>
+    <nav id="nav"><a href="./index.html">Devices</a></nav>
+  </div>
+  <a class="logo-link" href="./index.html"><img src="./eecis_logo.png" alt="EECIS" height="28"></a>
+</header>
+
+<h2>My rentals</h2>
+<p id="status" class="muted">Loading…</p>
+<table id="rentals-table" hidden>
+  <thead>
+    <tr><th>Device</th><th>Dates</th><th>Status</th><th>Actions</th></tr>
+  </thead>
+  <tbody id="rentals-body"></tbody>
+</table>
+
+<script type="module">
+import { sb, requireUser, deviceLabel, isAdmin, todayLocal, addDays, $ } from "./app.js";
+
+const statusEl = $("#status");
+const table = $("#rentals-table");
+const body = $("#rentals-body");
+
+async function addAdminLink(user) {
+  if (!(await isAdmin(user)) || $("#manage-devices")) return;
+  const a = document.createElement("a");
+  a.id = "manage-devices";
+  a.href = "./devices.html";
+  a.textContent = "Manage devices";
+  $("#nav").appendChild(a);
+}
+
+async function load() {
+  statusEl.hidden = false;
+  statusEl.textContent = "Loading…";
+  statusEl.className = "muted";
+  table.hidden = true;
+
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return; // requireUser() already redirected to index.html
+  }
+  addAdminLink(user);
+
+  const { data: rentals, error } = await sb
+    .from("rentals")
+    .select("*, device:devices(name,maker,model,unit_no,labelled)")
+    .order("created_at", { ascending: false });
+  if (error) {
+    statusEl.textContent = `Could not load rentals: ${error.message}`;
+    statusEl.className = "error";
+    return;
+  }
+
+  const { data: extensions, error: extError } = await sb
+    .from("extension_requests")
+    .select("id, rental_id, new_end_date, status")
+    .eq("status", "pending");
+  if (extError) {
+    statusEl.textContent = `Could not load extension requests: ${extError.message}`;
+    statusEl.className = "error";
+    return;
+  }
+  const pendingExtByRental = new Map((extensions || []).map((e) => [e.rental_id, e]));
+
+  render(rentals, pendingExtByRental);
+}
+
+function render(rentals, pendingExtByRental) {
+  body.innerHTML = "";
+
+  if (rentals.length === 0) {
+    statusEl.textContent = "You have no rentals yet.";
+    statusEl.className = "muted";
+    return;
+  }
+
+  for (const r of rentals) {
+    const tr = document.createElement("tr");
+    const overdue = r.status === "approved" && r.end_date < todayLocal();
+
+    const tdDevice = document.createElement("td");
+    tdDevice.textContent = deviceLabel(r.device);
+
+    const tdDates = document.createElement("td");
+    tdDates.textContent = `${r.start_date} → ${r.end_date}`;
+    if (overdue) {
+      const span = document.createElement("span");
+      span.className = "busy";
+      span.textContent = " OVERDUE";
+      tdDates.appendChild(span);
+    }
+
+    const tdStatus = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = `badge ${r.status}`;
+    badge.textContent = r.status;
+    tdStatus.appendChild(badge);
+    const pendingExt = pendingExtByRental.get(r.id);
+    if (pendingExt) {
+      const p = document.createElement("div");
+      p.className = "muted";
+      p.textContent = `extension to ${pendingExt.new_end_date} pending`;
+      tdStatus.appendChild(p);
+    }
+
+    const tdActions = document.createElement("td");
+    const errorP = document.createElement("p");
+    errorP.className = "error";
+
+    if (r.status === "approved") {
+      const actionsDiv = document.createElement("div");
+      actionsDiv.className = "row-actions";
+
+      const dateInput = document.createElement("input");
+      dateInput.type = "date";
+      dateInput.min = addDays(r.end_date, 1); // RPC requires strictly later than end_date
+
+      const extendBtn = document.createElement("button");
+      extendBtn.type = "button";
+      extendBtn.textContent = "Request extension";
+      extendBtn.disabled = Boolean(pendingExt);
+      extendBtn.addEventListener("click", async () => {
+        errorP.textContent = "";
+        if (!dateInput.value) {
+          errorP.textContent = "Choose a new end date first.";
+          return;
+        }
+        extendBtn.disabled = true;
+        const { error } = await sb.rpc("request_extension", {
+          p_rental_id: r.id,
+          p_new_end_date: dateInput.value,
+        });
+        if (error) {
+          errorP.textContent = error.message;
+          extendBtn.disabled = false;
+          return;
+        }
+        load();
+      });
+
+      const returnBtn = document.createElement("button");
+      returnBtn.type = "button";
+      returnBtn.textContent = "Mark returned";
+      returnBtn.addEventListener("click", async () => {
+        errorP.textContent = "";
+        if (!confirm(`Mark "${deviceLabel(r.device)}" as returned?`)) return;
+        returnBtn.disabled = true;
+        const { error } = await sb.rpc("mark_returned", { p_rental_id: r.id });
+        if (error) {
+          errorP.textContent = error.message;
+          returnBtn.disabled = false;
+          return;
+        }
+        load();
+      });
+
+      actionsDiv.append(dateInput, extendBtn, returnBtn);
+      tdActions.appendChild(actionsDiv);
+    }
+    tdActions.appendChild(errorP);
+
+    tr.append(tdDevice, tdDates, tdStatus, tdActions);
+    if (overdue) tr.classList.add("busy");
+    body.appendChild(tr);
+  }
+
+  statusEl.hidden = true;
+  table.hidden = false;
+}
+
+load();
+</script>
+</body>
+</html>

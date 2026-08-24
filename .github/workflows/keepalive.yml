@@ -1,0 +1,23 @@
+# Supabase pauses free projects after 7 days without API activity. This pings the
+# REST API once a day so the rental system never goes to sleep.
+name: Keep Supabase awake
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+permissions: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query the devices table through the Data API
+        env:
+          SUPABASE_URL: https://dkrdzinneanhzgbblsur.supabase.co
+          SUPABASE_ANON_KEY: sb_publishable_j-rpvIoLfdZXwswoa6kffA_ee0rsK2u
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            "$SUPABASE_URL/rest/v1/devices?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "HTTP $code"
+          # 200 (rows) or 401 (anon has no select grant) both prove the API was hit.
+          case "$code" in 200|401) exit 0;; *) exit 1;; esac

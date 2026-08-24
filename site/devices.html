@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Manage devices — EECIS Device Rental</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header>
+  <div class="header-text">
+    <h1>EECIS Device Rental</h1>
+    <nav><a href="./index.html">Devices</a> <a href="./my.html">My rentals</a></nav>
+  </div>
+  <a class="logo-link" href="./index.html"><img src="./eecis_logo.png" alt="EECIS" height="28"></a>
+</header>
+
+<h2>Manage devices</h2>
+<p id="status" class="muted">Loading…</p>
+
+<section id="admin-ui" hidden>
+  <h3>Add a device</h3>
+  <form id="add-form">
+    <label>Name
+      <input type="text" id="add-name" required>
+    </label>
+    <label>Maker
+      <input type="text" id="add-maker" placeholder="optional">
+    </label>
+    <label>Model
+      <input type="text" id="add-model" placeholder="optional">
+    </label>
+    <label>Unit number
+      <input type="number" id="add-unit-no" value="1" min="1" step="1" required>
+    </label>
+    <label class="inline">
+      <input type="checkbox" id="add-labelled" checked>
+      Carries a physical “Nr.x” label
+    </label>
+    <label class="inline">
+      <input type="checkbox" id="add-active" checked>
+      Active (shown to borrowers)
+    </label>
+    <button type="submit" id="add-submit">Add device</button>
+    <p id="add-msg"></p>
+  </form>
+
+  <h3>All devices</h3>
+  <p class="muted">
+    Devices are never deleted — untick <strong>Active</strong> to retire one, so the rentals
+    that reference it keep working. Untick <strong>Labelled</strong> for a device that has no
+    physical “Nr.x” sticker; its unit number is then left out of the name everywhere.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Maker</th><th>Model</th><th>Nr.</th><th>Labelled</th><th>Active</th><th></th></tr>
+    </thead>
+    <tbody id="devices-body"></tbody>
+  </table>
+</section>
+
+<script type="module">
+import { sb, requireUser, isAdmin, sortDevices, $ } from "./app.js";
+
+const statusEl = $("#status");
+const adminUi = $("#admin-ui");
+const body = $("#devices-body");
+const addForm = $("#add-form");
+const addMsg = $("#add-msg");
+
+function say(el, text, cls) {
+  el.textContent = text;
+  el.className = cls;
+}
+
+// Empty text inputs mean "no maker/model recorded", which is NULL in the database,
+// not an empty string (the unique constraint treats NULLs as not distinct).
+const orNull = (v) => (v.trim() === "" ? null : v.trim());
+
+function cellInput(type, value) {
+  const td = document.createElement("td");
+  const input = document.createElement("input");
+  input.type = type;
+  if (type === "checkbox") {
+    input.checked = Boolean(value);
+  } else if (type === "number") {
+    input.value = value ?? 1;
+    input.min = "1";
+    input.step = "1";
+  } else {
+    input.value = value ?? "";
+  }
+  td.appendChild(input);
+  return { td, input };
+}
+
+function renderRow(d) {
+  const tr = document.createElement("tr");
+  const name = cellInput("text", d.name);
+  const maker = cellInput("text", d.maker);
+  const model = cellInput("text", d.model);
+  const unitNo = cellInput("number", d.unit_no);
+  const labelled = cellInput("checkbox", d.labelled);
+  const active = cellInput("checkbox", d.active);
+
+  const tdSave = document.createElement("td");
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.textContent = "Save";
+  const msg = document.createElement("p");
+  tdSave.append(saveBtn, msg);
+
+  saveBtn.addEventListener("click", async () => {
+    say(msg, "", "");
+    const patch = {
+      name: name.input.value.trim(),
+      maker: orNull(maker.input.value),
+      model: orNull(model.input.value),
+      unit_no: Number(unitNo.input.value),
+      labelled: labelled.input.checked,
+      active: active.input.checked,
+    };
+    if (!patch.name) return say(msg, "Name cannot be empty.", "error");
+    if (!Number.isInteger(patch.unit_no) || patch.unit_no < 1) {
+      return say(msg, "Unit number must be a whole number of 1 or more.", "error");
+    }
+    saveBtn.disabled = true;
+    // .select() so a silently blocked write (RLS) is reported instead of looking like success.
+    const { data, error } = await sb.from("devices").update(patch).eq("id", d.id).select("id");
+    saveBtn.disabled = false;
+    if (error) return say(msg, error.message, "error");
+    if (!data || data.length === 0) return say(msg, "Nothing was saved — are you still signed in as an admin?", "error");
+    say(msg, "Saved.", "ok");
+  });
+
+  tr.append(name.td, maker.td, model.td, unitNo.td, labelled.td, active.td, tdSave);
+  if (!d.active) tr.classList.add("muted");
+  return tr;
+}
+
+async function loadDevices() {
+  // Every device, including inactive ones: devices_read is `using (true)`.
+  const { data, error } = await sb.from("devices").select("*");
+  if (error) {
+    say(statusEl, `Could not load devices: ${error.message}`, "error");
+    statusEl.hidden = false;
+    adminUi.hidden = true;
+    return;
+  }
+  body.textContent = "";
+  for (const d of sortDevices(data)) body.appendChild(renderRow(d));
+  statusEl.hidden = true;
+  adminUi.hidden = false;
+}
+
+addForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  say(addMsg, "", "");
+  const row = {
+    name: $("#add-name").value.trim(),
+    maker: orNull($("#add-maker").value),
+    model: orNull($("#add-model").value),
+    unit_no: Number($("#add-unit-no").value),
+    labelled: $("#add-labelled").checked,
+    active: $("#add-active").checked,
+  };
+  if (!row.name) return say(addMsg, "Name cannot be empty.", "error");
+  if (!Number.isInteger(row.unit_no) || row.unit_no < 1) {
+    return say(addMsg, "Unit number must be a whole number of 1 or more.", "error");
+  }
+  const submit = $("#add-submit");
+  submit.disabled = true;
+  const { error } = await sb.from("devices").insert(row).select("id").single();
+  submit.disabled = false;
+  if (error) return say(addMsg, error.message, "error");
+  say(addMsg, `Added ${row.name}.`, "ok");
+  addForm.reset();
+  await loadDevices();
+});
+
+async function init() {
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return; // requireUser() already redirected to index.html
+  }
+  if (!(await isAdmin(user))) {
+    say(statusEl, "Admins only. Ask the lab manager if you need access to this page.", "error");
+    return;
+  }
+  await loadDevices();
+}
+
+init();
+</script>
+</body>
+</html>
