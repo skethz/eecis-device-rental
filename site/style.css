@@ -192,5 +192,5 @@ td p {
   color: #E6EAF0;
 }
 .rules-title { margin: 0 0 0.5em; font-weight: 600; color: #F97316; }
-.rules ul { margin: 0; padding-left: 1.3em; }
+.rules ul, .rules ol { margin: 0; padding-left: 1.3em; }
 .rules li { margin: 0.35em 0; line-height: 1.5; }
