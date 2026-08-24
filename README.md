@@ -1,6 +1,6 @@
 # EECIS Device Rental
 
-**Live site: https://skethz.github.io/eecis-device-rental/**
+**Live site: https://skethz.github.io/eecis-device-rental/** · [Door notice (A4 PDF)](docs/EECIS_Device_Rental_H66_door.pdf)
 
 ![Home page: rental rules and device list with borrower details](docs/images/home.png)
 
