@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { decisionMail, type Mail } from "../_shared/email.ts";
+import { decisionMail, deviceDecisionMail, type Mail } from "../_shared/email.ts";
 import { createTransport, sendEmail, smtpConfigFromEnv } from "../_shared/mailer.ts";
 
 export interface Deps { db: any; send: (m: Mail) => Promise<void> }
@@ -50,9 +50,39 @@ export async function handleDecidePost(p: Params, d: Deps): Promise<Response> {
   const { data: t } = await d.db.from("action_tokens").select("*").eq("token", token).is("used_at", null).maybeSingle();
   if (!t) return json(false, "Link expired", "This link was already used or is invalid.", 410);
   const approved = action === "approve", now = new Date().toISOString();
+  const verdict = approved ? "approved" : "denied";
+  // Set by the device branch; the rental/extension branches fall back to the default
+  // below. `what` names the decided thing in the JSON the confirmation page shows and
+  // `who` is whoever the decision mail went to.
+  let outcome: { mail: Mail; what: string; who: "borrower" | "proposer" } | undefined;
   let rental: any, newEnd: string | undefined;
-  if (t.kind === "rental") {
-    const { data, error } = await d.db.from("rentals").update({ status: approved ? "approved" : "denied", decided_at: now })
+  if (t.kind === "device") {
+    const { data: q } = await d.db.from("device_requests").select("*").eq("id", t.target_id).eq("status", "pending").maybeSingle();
+    if (!q) return json(false, "Not found", "Device proposal no longer pending.", 410);
+    let deviceId: number | null = null;
+    if (approved) {
+      // Create the device first: if it turns out to exist already the proposal stays
+      // pending and the token unused, so the lab manager can still deny the duplicate.
+      const { data: dev, error } = await d.db.from("devices")
+        .insert({ name: q.name, maker: q.maker, model: q.model, unit_no: q.unit_no, labelled: q.labelled, active: true })
+        .select("id").single();
+      if (error?.code === "23505") {
+        return json(false, "Conflict", "That device already exists in the list; the proposal stays pending.", 409);
+      }
+      if (error) throw error;
+      if (!dev) return json(false, "Error", "The device could not be created.", 500);
+      deviceId = dev.id;
+    }
+    // Only transition pending -> approved/denied, so a concurrent click that already
+    // decided this proposal loses the race and gets told so, instead of also mailing.
+    const { data: decided } = await d.db.from("device_requests")
+      .update({ status: verdict, decided_at: now, device_id: deviceId })
+      .eq("id", q.id).eq("status", "pending")
+      .select().maybeSingle();
+    if (!decided) return json(false, "Already handled", "This device proposal was already decided.", 410);
+    outcome = { mail: deviceDecisionMail(q, approved), what: `Device proposal #${q.id}`, who: "proposer" };
+  } else if (t.kind === "rental") {
+    const { data, error } = await d.db.from("rentals").update({ status: verdict, decided_at: now })
       .eq("id", t.target_id).eq("status", "pending").select(SEL).single();
     if (error?.code === "23P01") return json(false, "Conflict", "This device is already approved for an overlapping period; the request stays pending.", 409);
     if (error || !data) return json(false, "Not found", "Request no longer pending.", 410);
@@ -79,21 +109,23 @@ export async function handleDecidePost(p: Params, d: Deps): Promise<Response> {
     // Only transition pending -> approved/denied; a concurrent click that already
     // decided this request loses the race and gets told so, instead of also mailing.
     const { data: extDecided } = await d.db.from("extension_requests")
-      .update({ status: approved ? "approved" : "denied", decided_at: now })
+      .update({ status: verdict, decided_at: now })
       .eq("id", ext.id).eq("status", "pending")
       .select().maybeSingle();
     if (!extDecided) return json(false, "Already handled", "This extension request was already decided.", 410);
   }
+  outcome ??= { mail: decisionMail(rental, t.kind, approved, newEnd), what: `Request #${rental.id}`, who: "borrower" };
   await d.db.from("action_tokens").update({ used_at: now }).eq("token", token);
+  const title = approved ? "Approved" : "Denied";
   try {
-    await d.send(decisionMail(rental, t.kind, approved, newEnd));
-    return json(true, approved ? "Approved" : "Denied", `Request #${rental.id} ${approved ? "approved" : "denied"}; the borrower has been notified.`);
+    await d.send(outcome.mail);
+    return json(true, title, `${outcome.what} ${verdict}; the ${outcome.who} has been notified.`);
   } catch (e) {
     console.error(e);
     return json(
       true,
-      approved ? "Approved" : "Denied",
-      `Request #${rental.id} ${approved ? "approved" : "denied"}. (The borrower could not be notified automatically — please inform them yourself.)`,
+      title,
+      `${outcome.what} ${verdict}. (The ${outcome.who} could not be notified automatically — please inform them yourself.)`,
     );
   }
 }

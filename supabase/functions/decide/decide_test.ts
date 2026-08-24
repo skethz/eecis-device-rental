@@ -204,6 +204,143 @@ Deno.test("extension deny mails borrower that it was denied", async () => {
   assertStringIncludes(sent[0].subject, "denied");
 });
 
+// --- Device proposals ---
+
+const proposalFixture = {
+  id: 3,
+  user_id: "u1",
+  proposer_name: "Ana",
+  proposer_email: "ana@ethz.ch",
+  name: "Precision Source",
+  maker: "Keysight",
+  model: "B2912A/B",
+  unit_no: 2,
+  labelled: true,
+  note: null,
+  status: "pending",
+};
+
+const deviceToken = { token: "abc", kind: "device", target_id: 3, used_at: null };
+
+Deno.test("device approve inserts the device, records device_id and mails the proposer", async () => {
+  let insertedDevice: unknown, decidedWith: unknown;
+  const { db, sent, deps } = harness((table, calls, idx) => {
+    if (idx === 0) return { data: deviceToken, error: null };
+    if (idx === 1) { assertEquals(table, "device_requests"); return { data: proposalFixture, error: null }; }
+    if (idx === 2) {
+      assertEquals(table, "devices");
+      insertedDevice = calls.find((c) => c.method === "insert")?.args[0];
+      return { data: { id: 42 }, error: null };
+    }
+    if (idx === 3) {
+      assertEquals(table, "device_requests");
+      decidedWith = calls.find((c) => c.method === "update")?.args[0];
+      return { data: { ...proposalFixture, status: "approved", device_id: 42 }, error: null };
+    }
+    if (idx === 4) { assertEquals(table, "action_tokens"); return { data: null, error: null }; }
+    throw new Error("unexpected call " + idx);
+  });
+  const res = await handleDecidePost(form("abc", "approve"), deps);
+  assertEquals(res.status, 200);
+  const b = await body(res);
+  assertEquals(b.ok, true);
+  assertEquals(b.title, "Approved");
+  assertStringIncludes(b.message, "Device proposal #3 approved");
+  assertStringIncludes(b.message, "the proposer has been notified");
+  assertEquals(insertedDevice, { name: "Precision Source", maker: "Keysight", model: "B2912A/B", unit_no: 2, labelled: true, active: true });
+  assertEquals((decidedWith as { status: string; device_id: number }).status, "approved");
+  assertEquals((decidedWith as { status: string; device_id: number }).device_id, 42);
+  assertEquals(sent.length, 1);
+  assertEquals(sent[0].to, ["ana@ethz.ch"]);
+  assertStringIncludes(sent[0].subject, "device proposal #3 was approved");
+  assertEquals(db.fromCalls.length, 5);
+});
+
+Deno.test("device deny mails the proposer and creates no device", async () => {
+  let touchedDevices = false, decidedWith: unknown;
+  const { sent, deps } = harness((table, calls, idx) => {
+    if (idx === 0) return { data: deviceToken, error: null };
+    if (idx === 1) return { data: proposalFixture, error: null };
+    if (table === "devices") { touchedDevices = true; return { data: null, error: null }; }
+    if (idx === 2) {
+      assertEquals(table, "device_requests");
+      decidedWith = calls.find((c) => c.method === "update")?.args[0];
+      return { data: { ...proposalFixture, status: "denied" }, error: null };
+    }
+    if (idx === 3) { assertEquals(table, "action_tokens"); return { data: null, error: null }; }
+    throw new Error("unexpected call " + idx);
+  });
+  const res = await handleDecidePost(form("abc", "deny"), deps);
+  assertEquals(res.status, 200);
+  assertStringIncludes((await body(res)).message, "Device proposal #3 denied");
+  assertEquals(touchedDevices, false);
+  assertEquals((decidedWith as { status: string; device_id: number | null }).status, "denied");
+  assertEquals((decidedWith as { status: string; device_id: number | null }).device_id, null);
+  assertEquals(sent.length, 1);
+  assertStringIncludes(sent[0].subject, "denied");
+});
+
+Deno.test("device approve: the device already exists (23505) returns 409, proposal stays pending, token unused", async () => {
+  let proposalUpdated = false, tokenUpdated = false;
+  const { sent, deps } = harness((table, calls, idx) => {
+    if (idx === 0) return { data: deviceToken, error: null };
+    if (idx === 1) return { data: proposalFixture, error: null };
+    if (idx === 2) { assertEquals(table, "devices"); return { data: null, error: { code: "23505", message: "duplicate key" } }; }
+    if (table === "device_requests" && calls.some((c) => c.method === "update")) { proposalUpdated = true; return { data: null, error: null }; }
+    if (table === "action_tokens" && calls.some((c) => c.method === "update")) { tokenUpdated = true; return { data: null, error: null }; }
+    throw new Error("unexpected call " + idx);
+  });
+  const res = await handleDecidePost(form("abc", "approve"), deps);
+  assertEquals(res.status, 409);
+  assertStringIncludes((await body(res)).message, "already exists");
+  assertEquals(sent.length, 0);
+  assertEquals(proposalUpdated, false);
+  assertEquals(tokenUpdated, false);
+});
+
+Deno.test("device: a proposal that is no longer pending returns 410 and writes nothing", async () => {
+  const { db, sent, deps } = harness((table, _calls, idx) => {
+    if (idx === 0) return { data: deviceToken, error: null };
+    if (idx === 1) { assertEquals(table, "device_requests"); return { data: null, error: null }; }
+    throw new Error("unexpected call " + idx);
+  });
+  const res = await handleDecidePost(form("abc", "approve"), deps);
+  assertEquals(res.status, 410);
+  assertStringIncludes((await body(res)).message, "no longer pending");
+  assertEquals(sent.length, 0);
+  assertEquals(db.fromCalls.length, 2);
+});
+
+Deno.test("device approve: duplicate click (already decided) returns 410, no double mail, token unused", async () => {
+  let tokenUpdated = false;
+  const { sent, deps } = harness((table, calls, idx) => {
+    if (idx === 0) return { data: deviceToken, error: null };
+    if (idx === 1) return { data: proposalFixture, error: null };
+    if (idx === 2) return { data: { id: 42 }, error: null };
+    if (idx === 3) return { data: null, error: null }; // conditional update lost the race: 0 rows
+    if (table === "action_tokens" && calls.some((c) => c.method === "update")) { tokenUpdated = true; return { data: null, error: null }; }
+    throw new Error("unexpected call " + idx);
+  });
+  const res = await handleDecidePost(form("abc", "approve"), deps);
+  assertEquals(res.status, 410);
+  assertStringIncludes((await body(res)).message, "already decided");
+  assertEquals(sent.length, 0);
+  assertEquals(tokenUpdated, false);
+});
+
+Deno.test("device GET describes a device token without writing", async () => {
+  const { db, deps } = harness((table, _calls, idx) => {
+    if (idx === 0) { assertEquals(table, "action_tokens"); return { data: deviceToken, error: null }; }
+    throw new Error("unexpected call " + idx);
+  });
+  const res = await handleDecideGet(url("abc"), deps);
+  assertEquals(res.status, 200);
+  const b = await body(res);
+  assertEquals(b.kind, "device");
+  assertEquals(b.target_id, 3);
+  assertEquals(db.fromCalls.length, 1);
+});
+
 // --- GET must never mutate: mail scanners and link previewers prefetch every URL ---
 
 Deno.test("GET with a token describes it as JSON and writes nothing", async () => {

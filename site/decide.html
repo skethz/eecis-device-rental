@@ -89,7 +89,8 @@ async function init() {
     }
     const data = await res.json();
     if (data.ok && data.target_id != null) {
-      const noun = data.kind === "extension" ? `extension request #${data.target_id}` : `request #${data.target_id}`;
+      const nouns = { extension: "extension request", device: "device proposal" };
+      const noun = `${nouns[data.kind] ?? "request"} #${data.target_id}`;
       messageEl.textContent = sentence(noun);
     }
   } catch {
