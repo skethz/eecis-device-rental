@@ -14,3 +14,9 @@ create extension if not exists btree_gist;
 -- they must come from the migrations themselves (see 0003_rls_and_rpc.sql), so the tests
 -- exercise the same grants that will apply on real Supabase.
 grant usage on schema public to anon, authenticated, service_role;
+
+-- 0005_webhooks_cron.sql needs pg_net/pg_cron and is skipped by run.sh, but it is also
+-- where public.call_notify() is defined, and later migrations attach triggers to it.
+-- Stub it as a no-op so those CREATE TRIGGERs load; the real one POSTs to `notify`.
+create or replace function public.call_notify() returns trigger
+language plpgsql as $$ begin return new; end $$;

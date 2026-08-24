@@ -100,7 +100,56 @@ do $$ declare n int; begin
   select count(*) into n from device_status;
   if n <> 0 then raise exception 'device_status lists a rental that already ended'; end if;
 end $$;
+-- device proposals (0007): everyone may propose, but only for themselves
+set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111'; set local request.jwt.claim.email = 'a@ethz.ch';
+insert into device_requests(user_id, proposer_name, proposer_email, name, maker, model, unit_no, labelled, note)
+  values ('11111111-1111-1111-1111-111111111111','A','a@ethz.ch','Proposed Scope A','ACME','S1',1,true,'bought for the group');
+set local request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222'; set local request.jwt.claim.email = 'b@ethz.ch';
+insert into device_requests(user_id, proposer_name, proposer_email, name)
+  values ('22222222-2222-2222-2222-222222222222','B','b@ethz.ch','Proposed Scope B');
+-- ...not on someone else's behalf, and not with someone else's address (that is where
+-- the decision mail goes)
+do $$ begin
+  insert into device_requests(user_id, proposer_name, proposer_email, name)
+    values ('11111111-1111-1111-1111-111111111111','A','a@ethz.ch','Spoofed Owner');
+  raise exception 'spoofed device_requests user_id accepted';
+exception when insufficient_privilege then null; end $$;
+do $$ begin
+  insert into device_requests(user_id, proposer_name, proposer_email, name)
+    values ('22222222-2222-2222-2222-222222222222','B','victim@gmail.com','Spoofed Email');
+  raise exception 'spoofed proposer_email accepted';
+exception when insufficient_privilege then null; end $$;
+-- a proposal may not be born already approved
+do $$ begin
+  insert into device_requests(user_id, proposer_name, proposer_email, name, status)
+    values ('22222222-2222-2222-2222-222222222222','B','b@ethz.ch','Pre-approved','approved');
+  raise exception 'pre-approved proposal accepted';
+exception when insufficient_privilege then null; end $$;
+-- B sees only her own proposal, not A's
+do $$ declare n int; begin
+  select count(*) into n from device_requests;
+  if n <> 1 then raise exception 'expected 1 own proposal, got %', n; end if;
+  if not exists (select 1 from device_requests where name = 'Proposed Scope B') then
+    raise exception 'own proposal not visible'; end if;
+end $$;
+-- authenticated may never decide a proposal itself (no update grant)
+do $$ begin
+  update device_requests set status = 'approved' where name = 'Proposed Scope B';
+  raise exception 'direct device_requests update accepted';
+exception when insufficient_privilege then null; end $$;
+-- an admin (a third user, owning none of them) sees both
+set local request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333'; set local request.jwt.claim.email = 'hongse@ethz.ch';
+do $$ declare n int; begin
+  select count(*) into n from device_requests;
+  if n <> 2 then raise exception 'admin sees % proposals, expected 2', n; end if;
+end $$;
 reset role;
+-- action_tokens now also carries the 'device' kind (0007)
+insert into action_tokens(kind, target_id) select 'device', id from device_requests where name = 'Proposed Scope A';
+do $$ begin
+  insert into action_tokens(kind, target_id) values ('nonsense', 1);
+  raise exception 'unknown action_tokens kind accepted';
+exception when check_violation then null; end $$;
 select count(*) as busy from device_availability where name='Saleae RLS Test';
 select 'rls ok';
 rollback;
