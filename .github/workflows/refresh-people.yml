@@ -1,0 +1,22 @@
+# The name/email picker on the request form uses a static copy of the IIS people page
+# (site/people.js). Regenerate it weekly so new members and departures show up.
+name: Refresh IIS people list
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/fetch_people.py
+      - name: Commit if changed
+        run: |
+          git add site/people.js
+          git diff --cached --quiet && exit 0
+          git -c user.name=github-actions -c user.email=github-actions@github.com \
+            commit -m "Refresh site/people.js from the IIS people page"
+          git push

@@ -43,6 +43,8 @@
     <input type="date" id="end" required>
   </label>
 
+  <p class="hint">Names and emails: start typing or click a field to pick from the <a href="https://iis.ee.ethz.ch/people.html" target="_blank" rel="noopener">IIS people list</a>; picking a name fills the email. Anyone not on the list can be typed in as usual.</p>
+
   <label>Your name
     <input type="text" id="borrower_name" required>
   </label>
@@ -74,6 +76,8 @@
 
 <script type="module">
 import { sb, requireUser, deviceLabel, overlaps, sortDevices, todayLocal, $ } from "./app.js";
+import { PEOPLE } from "./people.js";
+import { attachPeoplePicker } from "./people_picker.js";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -185,6 +189,18 @@ async function init() {
     return; // requireUser() already redirected to index.html
   }
   $("#borrower_email").value = user.email;
+
+  // Type or click to pick from the IIS people list; picking a name fills the email too.
+  attachPeoplePicker($("#borrower_name"), { people: PEOPLE });
+  const fillPair = (nameId, emailId) => (p) => {
+    $(nameId).value = p.name;
+    $(emailId).value = p.email;
+    $(emailId).dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  attachPeoplePicker($("#manager_name"), { people: PEOPLE, onPick: fillPair("#manager_name", "#manager_email") });
+  attachPeoplePicker($("#manager_email"), { people: PEOPLE, onPick: fillPair("#manager_name", "#manager_email") });
+  attachPeoplePicker($("#professor_name"), { people: PEOPLE, preferGroup: "Professors", onPick: fillPair("#professor_name", "#professor_email") });
+  attachPeoplePicker($("#professor_email"), { people: PEOPLE, preferGroup: "Professors", onPick: fillPair("#professor_name", "#professor_email") });
 
   const { data, error } = await sb.from("device_availability").select("*");
   if (error) {

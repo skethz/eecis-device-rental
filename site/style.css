@@ -194,3 +194,69 @@ td p {
 .rules-title { margin: 0 0 0.5em; font-weight: 600; color: #F97316; }
 .rules ul, .rules ol { margin: 0; padding-left: 1.3em; }
 .rules li { margin: 0.35em 0; line-height: 1.5; }
+
+/* People picker (people_picker.js): a dropdown under the name/email inputs. */
+.picker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.picker-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 18em;
+  overflow-y: auto;
+  background: #121A28;
+  border: 1px solid #2A3547;
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.picker-list li {
+  padding: 0.35em 0.6em;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 1em;
+}
+
+.picker-list li.active,
+.picker-list li[role="option"]:hover {
+  background: #1C2534;
+}
+
+.picker-list .picker-group {
+  cursor: default;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8A94A6;
+  background: #0D131F;
+  position: sticky;
+  top: 0;
+}
+
+.picker-list .picker-empty {
+  cursor: default;
+  color: #8A94A6;
+  font-size: 0.9em;
+}
+
+.picker-email {
+  color: #8A94A6;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.hint {
+  color: #8A94A6;
+  font-size: 0.9em;
+  margin: 0;
+}
