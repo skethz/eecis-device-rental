@@ -88,7 +88,7 @@ Deno.test("sortDevices orders by name, maker, model, then unit number", () => {
     { id: 5, name: "Saleae", maker: null, model: null, unit_no: 6 },
     { id: 1, name: "Precision Source", maker: "Keysight", model: "B2912A/B", unit_no: 2 },
     { id: 4, name: "Saleae", maker: null, model: null, unit_no: 1 },
-    { id: 2, name: "Precision Source", maker: "Keysight", model: "B2902A", unit_no: 1 },
+    { id: 2, name: "Precision Source", maker: "Keysight", model: "B2901A", unit_no: 1 },
     { id: 3, name: "Precision Source", maker: "Keysight", model: "B2912A/B", unit_no: 1 },
   ];
   assertEquals(sortDevices(rows).map((d) => d.id), [2, 3, 1, 4, 5]);
