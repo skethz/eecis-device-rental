@@ -128,6 +128,7 @@ export const PEOPLE = [
   {"name": "Till Zellweger", "email": "till.zellweger@iis.ee.ethz.ch", "group": "Nano-TCAD (Prof. Luisier)"},
   {"name": "Monika Zwahlen", "email": "monika.zwahlen@ethz.ch", "group": "Nano-TCAD (Prof. Luisier)"},
   {"name": "Oscar Castañeda Fernández", "email": "caoscar@iis.ee.ethz.ch", "group": "Integrated Information Processing (IIP) (Prof. Studer)"},
+  {"name": "Chandra de Viragh", "email": "devirac@student.ethz.ch", "group": "Integrated Information Processing (IIP) (Prof. Studer)"},
   {"name": "Mateo Juric", "email": "mjuric@iis.ee.ethz.ch", "group": "Integrated Information Processing (IIP) (Prof. Studer)"},
   {"name": "Torben Kölle", "email": "tkoelle@iis.ee.ethz.ch", "group": "Integrated Information Processing (IIP) (Prof. Studer)"},
   {"name": "Abhishek Kumar", "email": "kumarab@iis.ee.ethz.ch", "group": "Integrated Information Processing (IIP) (Prof. Studer)"},
