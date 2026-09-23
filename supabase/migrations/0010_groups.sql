@@ -24,7 +24,7 @@ grant select, insert, update on public.groups to authenticated;
 grant all on public.groups to service_role;
 
 insert into groups(name, manager_name, manager_email, professor_name, professor_email) values
-  ('Prof. Taekwang Jang (EECIS)', 'Seungki Hong', 'hongse@ethz.ch', 'Taekwang Jang', 'taekwang.jang@ethz.ch')
+  ('Prof. Taekwang Jang (EECIS)', 'Seungki Hong', 'hongse@ethz.ch', 'Taekwang Jang', 'tkjang@ethz.ch')
 on conflict do nothing;
 
 -- The request form still snapshots the group's manager and professor into the existing
