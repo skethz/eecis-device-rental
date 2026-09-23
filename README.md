@@ -18,7 +18,7 @@ A small website that replaces the "Rental Record" sheet in `EECIS_DEVICE_LIST.xl
 
 - Sign in on the site with your `ethz.ch` address (an 8-digit code is emailed to you, no password) and request a device from the Devices list.
 - Watch your email for the approve/deny decision, and check "My rentals" any time to see status, request an extension, or mark a device returned.
-- If a rental becomes overdue you (and your lab manager, professor, and ours) will get a daily reminder email until it's marked returned.
+- If a rental becomes overdue you (and your lab manager, professor, and ours) will get a daily reminder email until the return or an extension request is recorded.
 
 ## Proposing a device
 
@@ -26,7 +26,7 @@ If your group buys a device that should be rentable through this site, you don't
 
 1. Sign in and open **Devices / propose a device** in the nav (`site/devices.html`).
 2. Fill in the proposal: your name, the device's name and (optionally) maker and model, its `Nr.`, whether it carries a physical "Nr.x" sticker, and a note for the lab manager.
-3. Submitting stores a row in `device_requests` and emails the lab manager an **Approve**/**Deny** link — the same single-use-token flow the rental requests use. You get a receipt email straight away.
+3. Submitting stores a row in `device_requests` and emails the lab manager an **Approve**/**Deny** link — the same single-use-token flow the rental requests use. You get a confirmation email straight away.
 4. On **Approve** the device is inserted into `devices` (active, so it shows up in the rental list immediately) and the proposal records its `device_id`. On **Deny** nothing is added. Either way you get an email with the outcome.
 
 Your own proposals and their status are listed under the form; an admin sees everyone's there, with a **Proposer** column. If the proposed device already exists in the list, approving returns "that device already exists" and the proposal stays pending, so the lab manager can deny the duplicate instead.
