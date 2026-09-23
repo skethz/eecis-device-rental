@@ -1,5 +1,5 @@
 // Minimal chainable fake for the subset of the supabase-js query builder API
-// used by the edge functions: from/select/eq/is/lt/or/order/insert/update
+// used by the edge functions: from/select/eq/is/lt/in/or/order/insert/update
 // plus the terminal maybeSingle()/single(), and being awaitable directly
 // (mirrors supabase-js's PromiseLike query builders, used when a query is
 // awaited without a terminal .single()/.maybeSingle() call).
@@ -36,6 +36,7 @@ export class FakeQuery implements PromiseLike<Result> {
   eq(...a: unknown[]): this { return this.rec("eq", a); }
   is(...a: unknown[]): this { return this.rec("is", a); }
   lt(...a: unknown[]): this { return this.rec("lt", a); }
+  in(...a: unknown[]): this { return this.rec("in", a); }
   or(...a: unknown[]): this { return this.rec("or", a); }
   order(...a: unknown[]): this { return this.rec("order", a); }
   insert(...a: unknown[]): this { return this.rec("insert", a); }

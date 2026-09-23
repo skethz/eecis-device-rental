@@ -8,8 +8,21 @@ export async function runOverdue(d: Deps, today: string): Promise<number> {
   const { data, error } = await d.db.from("rentals").select("*, device:devices(name,maker,model,unit_no,labelled)")
     .eq("status", "approved").lt("end_date", today).or(`last_warned_on.is.null,last_warned_on.lt.${today}`);
   if (error) throw error;
+  const candidates = data ?? [];
+
+  // Warnings pause while an extension request is pending. Nothing is sent and
+  // last_warned_on stays as it is, so they resume on their own if the extension is denied.
+  const paused = new Set<number>();
+  if (candidates.length > 0) {
+    const { data: pending, error: extError } = await d.db.from("extension_requests").select("rental_id")
+      .eq("status", "pending").in("rental_id", candidates.map((r: { id: number }) => r.id));
+    if (extError) throw extError;
+    for (const e of pending ?? []) paused.add(e.rental_id);
+  }
+
   let n = 0;
-  for (const r of data ?? []) {
+  for (const r of candidates) {
+    if (paused.has(r.id)) continue;
     try {
       await d.send(overdueMail(r, d.labManager, today));
     } catch (e) {
