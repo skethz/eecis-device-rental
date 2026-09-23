@@ -21,7 +21,7 @@
 <aside class="rules" role="note">
   <p class="rules-title">&#9888; Rental rules &mdash; please read before you request</p>
   <ul>
-    <li><strong>Initial request:</strong> To rent a device from H66, a user must submit a request to the lab manager (Seungki Hong, hongse&#64;ethz.ch) via the device list. The request specifies the rental period, your name and group.</li>
+    <li><strong>Initial request:</strong> To rent a device from H66, a user must submit a request to the lab manager (Seungki Hong, hongse&#64;ethz.ch) via the device list. The request specifies the rental period, your name, and your lab manager and professor.</li>
     <li><strong>Extensions:</strong> If you wish to extend the rental period, you must submit another request via <em>My rentals</em>.</li>
     <li><strong>Returns:</strong> When returning the device, you must submit the return record via <em>My rentals</em>.</li>
     <li><strong>Overdue warnings:</strong> If the rental period expires and no return is recorded in the system, a warning email is sent automatically to you, your lab manager and professor, and our lab manager &mdash; every day until the return or extension request is recorded.</li>
@@ -43,7 +43,7 @@
     <input type="date" id="end" required>
   </label>
 
-  <p class="hint">Your name: start typing or click the field to pick from the <a href="https://iis.ee.ethz.ch/people.html" target="_blank" rel="noopener">IIS people list</a>. Anyone not on the list can be typed in as usual.</p>
+  <p class="hint">Names and emails: start typing or click a field to pick from the <a href="https://iis.ee.ethz.ch/people.html" target="_blank" rel="noopener">IIS people list</a>; picking a name fills the email. Anyone not on the list can be typed in as usual.</p>
 
   <label>Your name
     <input type="text" id="borrower_name" required>
@@ -53,13 +53,21 @@
     <input type="email" id="borrower_email" readonly>
   </label>
 
-  <label>Your group
-    <select id="group" required>
-      <option value="">Select your group…</option>
-    </select>
+  <label>Your lab manager's name
+    <input type="text" id="manager_name" required>
   </label>
-  <p id="group-contacts" class="muted"></p>
-  <p class="muted">Group not listed? Email the lab manager (<a href="mailto:hongse@ethz.ch">hongse&#64;ethz.ch</a>) to have it added.</p>
+
+  <label>Your lab manager's email
+    <input type="email" id="manager_email" required>
+  </label>
+
+  <label>Professor's name
+    <input type="text" id="professor_name" required>
+  </label>
+
+  <label>Professor's email
+    <input type="email" id="professor_email" required>
+  </label>
 
   <p id="reason" class="error"></p>
   <button type="submit" id="submit" disabled>Send request</button>
@@ -71,6 +79,8 @@ import { sb, requireUser, deviceLabel, overlaps, sortDevices, todayLocal, $ } fr
 import { PEOPLE } from "./people.js";
 import { attachPeoplePicker } from "./people_picker.js";
 
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
 const loadStatus = $("#load-status");
 const form = $("#request-form");
 const submitBtn = $("#submit");
@@ -80,28 +90,12 @@ const resultEl = $("#result");
 const deviceSelect = $("#device");
 const startInput = $("#start");
 const endInput = $("#end");
-const groupSelect = $("#group");
-const groupContacts = $("#group-contacts");
 
 let devices = [];
-let groups = [];
 let user;
 
 function selectedDevice() {
   return devices.find((d) => String(d.device_id) === deviceSelect.value);
-}
-
-function selectedGroup() {
-  return groups.find((g) => String(g.id) === groupSelect.value);
-}
-
-// Show the chosen group's lab manager and professor so the borrower can check them;
-// these are the people the request and any overdue warnings are copied to.
-function showGroupContacts() {
-  const g = selectedGroup();
-  groupContacts.textContent = g
-    ? `Lab manager: ${g.manager_name} (${g.manager_email}); Professor: ${g.professor_name} (${g.professor_email})`
-    : "";
 }
 
 // Keep the native date pickers honest: no past start date, and no end date before
@@ -119,10 +113,23 @@ function validate() {
     startInput.value,
     endInput.value,
     $("#borrower_name").value.trim(),
-    selectedGroup(),
+    $("#manager_name").value.trim(),
+    $("#manager_email").value.trim(),
+    $("#professor_name").value.trim(),
+    $("#professor_email").value.trim(),
   ];
   if (fields.some((f) => !f)) {
     reasonEl.textContent = "";
+    submitBtn.disabled = true;
+    return;
+  }
+  if (!EMAIL_RE.test($("#manager_email").value.trim())) {
+    reasonEl.textContent = "Lab manager email looks invalid.";
+    submitBtn.disabled = true;
+    return;
+  }
+  if (!EMAIL_RE.test($("#professor_email").value.trim())) {
+    reasonEl.textContent = "Professor email looks invalid.";
     submitBtn.disabled = true;
     return;
   }
@@ -143,12 +150,9 @@ function validate() {
 
 form.addEventListener("input", validate);
 form.addEventListener("change", validate);
-groupSelect.addEventListener("change", showGroupContacts);
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const group = selectedGroup();
-  if (!group) return validate();
   submitBtn.disabled = true;
   resultEl.textContent = "Sending…";
   resultEl.className = "muted";
@@ -158,13 +162,10 @@ form.addEventListener("submit", async (e) => {
     user_id: user.id,
     borrower_name: $("#borrower_name").value.trim(),
     borrower_email: user.email,
-    // Snapshot of the group's contacts at request time, so the rental's history does
-    // not change if the group's manager is updated later.
-    manager_name: group.manager_name,
-    manager_email: group.manager_email,
-    professor_name: group.professor_name,
-    professor_email: group.professor_email,
-    group_id: group.id,
+    manager_name: $("#manager_name").value.trim(),
+    manager_email: $("#manager_email").value.trim(),
+    professor_name: $("#professor_name").value.trim(),
+    professor_email: $("#professor_email").value.trim(),
     start_date: startInput.value,
     end_date: endInput.value,
   });
@@ -189,36 +190,23 @@ async function init() {
   }
   $("#borrower_email").value = user.email;
 
-  // Type or click to pick from the IIS people list.
+  // Type or click to pick from the IIS people list; picking a name fills the email too.
   attachPeoplePicker($("#borrower_name"), { people: PEOPLE });
+  const fillPair = (nameId, emailId) => (p) => {
+    $(nameId).value = p.name;
+    $(emailId).value = p.email;
+    $(emailId).dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  attachPeoplePicker($("#manager_name"), { people: PEOPLE, onPick: fillPair("#manager_name", "#manager_email") });
+  attachPeoplePicker($("#professor_name"), { people: PEOPLE, preferGroup: "Professors", onPick: fillPair("#professor_name", "#professor_email") });
 
-  const [devRes, groupRes] = await Promise.all([
-    sb.from("device_availability").select("*"),
-    sb.from("groups")
-      .select("id,name,manager_name,manager_email,professor_name,professor_email")
-      .eq("active", true)
-      .order("name"),
-  ]);
-  if (devRes.error) {
-    loadStatus.textContent = `Could not load devices: ${devRes.error.message}`;
+  const { data, error } = await sb.from("device_availability").select("*");
+  if (error) {
+    loadStatus.textContent = `Could not load devices: ${error.message}`;
     loadStatus.className = "error";
     return;
   }
-  if (groupRes.error) {
-    loadStatus.textContent = `Could not load groups: ${groupRes.error.message}`;
-    loadStatus.className = "error";
-    return;
-  }
-  devices = sortDevices(devRes.data);
-  groups = groupRes.data ?? [];
-
-  for (const g of groups) {
-    const opt = document.createElement("option");
-    opt.value = g.id;
-    opt.textContent = g.name;
-    groupSelect.appendChild(opt);
-  }
-  showGroupContacts();
+  devices = sortDevices(data);
 
   const params = new URLSearchParams(location.search);
   const preselect = params.get("device");
