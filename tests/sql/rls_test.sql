@@ -150,6 +150,49 @@ do $$ begin
   insert into action_tokens(kind, target_id) values ('nonsense', 1);
   raise exception 'unknown action_tokens kind accepted';
 exception when check_violation then null; end $$;
+-- group registry (0010): everyone signed in reads it, only admins write it
+set local role authenticated;
+set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111'; set local request.jwt.claim.email = 'a@ethz.ch';
+do $$ declare n int; begin
+  select count(*) into n from groups
+   where name = 'Prof. Taekwang Jang (EECIS)' and manager_name = 'Seungki Hong' and manager_email = 'hongse@ethz.ch'
+     and professor_name = 'Taekwang Jang' and professor_email = 'taekwang.jang@ethz.ch' and active;
+  if n <> 1 then raise exception 'seeded group not visible to authenticated (% rows)', n; end if;
+end $$;
+do $$ begin
+  insert into groups(name, manager_name, manager_email, professor_name, professor_email)
+    values ('Rogue Group', 'M', 'm@ethz.ch', 'P', 'p@ethz.ch');
+  raise exception 'non-admin group insert accepted';
+exception when insufficient_privilege then null; end $$;
+-- As with devices, a non-admin UPDATE matches no rows (groups_admin_update's USING
+-- clause hides them), so it silently changes nothing rather than raising.
+do $$ declare n int; begin
+  update groups set manager_email = 'evil@ethz.ch' where name = 'Prof. Taekwang Jang (EECIS)';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'non-admin group update changed % rows', n; end if;
+end $$;
+-- a rental may record the chosen group
+insert into rentals(device_id,user_id,borrower_name,borrower_email,manager_name,manager_email,professor_name,professor_email,start_date,end_date,group_id)
+  select d.id,'11111111-1111-1111-1111-111111111111','A','a@ethz.ch',g.manager_name,g.manager_email,g.professor_name,g.professor_email,'2027-01-01','2027-01-05',g.id
+    from devices d, groups g where d.name='Saleae RLS Test' and g.name = 'Prof. Taekwang Jang (EECIS)';
+set local request.jwt.claim.email = 'hongse@ethz.ch';
+insert into groups(name, manager_name, manager_email, professor_name, professor_email)
+  values ('Admin Group', 'M', 'm@ethz.ch', 'P', 'p@ethz.ch');
+update groups set manager_name = 'M2', active = false where name = 'Admin Group';
+do $$ declare n int; begin
+  select count(*) into n from groups where name = 'Admin Group' and manager_name = 'M2' and not active;
+  if n <> 1 then raise exception 'admin group insert/update did not take effect'; end if;
+end $$;
+do $$ begin
+  insert into groups(name, manager_name, manager_email, professor_name, professor_email)
+    values ('Admin Group', 'M', 'm@ethz.ch', 'P', 'p@ethz.ch');
+  raise exception 'duplicate group name accepted';
+exception when unique_violation then null; end $$;
+do $$ begin
+  delete from groups where name = 'Admin Group';
+  raise exception 'group delete accepted';
+exception when insufficient_privilege then null; end $$;
+reset role;
 select count(*) as busy from device_availability where name='Saleae RLS Test';
 select 'rls ok';
 rollback;

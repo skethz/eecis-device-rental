@@ -116,6 +116,47 @@
     </thead>
     <tbody id="devices-body"></tbody>
   </table>
+
+  <h3>Groups (admin)</h3>
+  <p class="muted">
+    Borrowers pick their group on the request form; its lab manager and professor are copied
+    into the rental at that moment and receive the overdue warnings. Groups are never deleted —
+    untick <strong>Active</strong> to hide one from the request form.
+  </p>
+
+  <h4>Add a group</h4>
+  <form id="group-add-form">
+    <label>Group name
+      <input type="text" id="group-add-name" required>
+    </label>
+    <label>Lab manager's name
+      <input type="text" id="group-add-manager-name" required>
+    </label>
+    <label>Lab manager's email
+      <input type="email" id="group-add-manager-email" required>
+    </label>
+    <label>Professor's name
+      <input type="text" id="group-add-professor-name" required>
+    </label>
+    <label>Professor's email
+      <input type="email" id="group-add-professor-email" required>
+    </label>
+    <label class="inline">
+      <input type="checkbox" id="group-add-active" checked>
+      Active (shown on the request form)
+    </label>
+    <button type="submit" id="group-add-submit">Add group</button>
+    <p id="group-add-msg"></p>
+  </form>
+
+  <h4>All groups</h4>
+  <p id="groups-status" class="muted" hidden></p>
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Lab manager</th><th>Manager email</th><th>Professor</th><th>Professor email</th><th>Active</th><th></th></tr>
+    </thead>
+    <tbody id="groups-body"></tbody>
+  </table>
 </section>
 
 <script type="module">
@@ -342,6 +383,101 @@ addForm.addEventListener("submit", async (e) => {
   await loadDevices();
 });
 
+// --- Editing the group registry (admins only) -------------------------------
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const groupsBody = $("#groups-body");
+const groupsStatus = $("#groups-status");
+const groupAddForm = $("#group-add-form");
+const groupAddMsg = $("#group-add-msg");
+
+// Returns an error message, or "" when the group row is complete and well-formed.
+function checkGroup(g) {
+  if (!g.name) return "Group name cannot be empty.";
+  if (!g.manager_name) return "Lab manager's name cannot be empty.";
+  if (!EMAIL_RE.test(g.manager_email)) return "Lab manager's email looks invalid.";
+  if (!g.professor_name) return "Professor's name cannot be empty.";
+  if (!EMAIL_RE.test(g.professor_email)) return "Professor's email looks invalid.";
+  return "";
+}
+
+function renderGroupRow(g) {
+  const tr = document.createElement("tr");
+  const name = cellInput("text", g.name);
+  const managerName = cellInput("text", g.manager_name);
+  const managerEmail = cellInput("text", g.manager_email);
+  const professorName = cellInput("text", g.professor_name);
+  const professorEmail = cellInput("text", g.professor_email);
+  const active = cellInput("checkbox", g.active);
+
+  const tdSave = document.createElement("td");
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.textContent = "Save";
+  const msg = document.createElement("p");
+  tdSave.append(saveBtn, msg);
+
+  saveBtn.addEventListener("click", async () => {
+    say(msg, "", "");
+    const patch = {
+      name: name.input.value.trim(),
+      manager_name: managerName.input.value.trim(),
+      manager_email: managerEmail.input.value.trim(),
+      professor_name: professorName.input.value.trim(),
+      professor_email: professorEmail.input.value.trim(),
+      active: active.input.checked,
+    };
+    const problem = checkGroup(patch);
+    if (problem) return say(msg, problem, "error");
+    saveBtn.disabled = true;
+    // .select() so a silently blocked write (RLS) is reported instead of looking like success.
+    const { data, error } = await sb.from("groups").update(patch).eq("id", g.id).select("id");
+    saveBtn.disabled = false;
+    if (error) return say(msg, error.message, "error");
+    if (!data || data.length === 0) return say(msg, "Nothing was saved — are you still signed in as an admin?", "error");
+    say(msg, "Saved.", "ok");
+  });
+
+  tr.append(name.td, managerName.td, managerEmail.td, professorName.td, professorEmail.td, active.td, tdSave);
+  if (!g.active) tr.classList.add("muted");
+  return tr;
+}
+
+async function loadGroups() {
+  // Every group, including inactive ones: groups_read is `using (true)`.
+  const { data, error } = await sb.from("groups").select("*").order("name");
+  if (error) {
+    groupsStatus.hidden = false;
+    return say(groupsStatus, `Could not load groups: ${error.message}`, "error");
+  }
+  groupsStatus.hidden = true;
+  groupsBody.textContent = "";
+  for (const g of data) groupsBody.appendChild(renderGroupRow(g));
+}
+
+groupAddForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  say(groupAddMsg, "", "");
+  const row = {
+    name: $("#group-add-name").value.trim(),
+    manager_name: $("#group-add-manager-name").value.trim(),
+    manager_email: $("#group-add-manager-email").value.trim(),
+    professor_name: $("#group-add-professor-name").value.trim(),
+    professor_email: $("#group-add-professor-email").value.trim(),
+    active: $("#group-add-active").checked,
+  };
+  const problem = checkGroup(row);
+  if (problem) return say(groupAddMsg, problem, "error");
+  const submit = $("#group-add-submit");
+  submit.disabled = true;
+  const { error } = await sb.from("groups").insert(row).select("id").single();
+  submit.disabled = false;
+  if (error) return say(groupAddMsg, error.message, "error");
+  say(groupAddMsg, `Added ${row.name}.`, "ok");
+  groupAddForm.reset();
+  await loadGroups();
+});
+
 async function init() {
   try {
     currentUser = await requireUser();
@@ -355,7 +491,10 @@ async function init() {
   statusEl.hidden = true;
   proposeUi.hidden = false;
   await loadProposals();
-  if (admin) await loadDevices();
+  if (admin) {
+    await loadDevices();
+    await loadGroups();
+  }
 }
 
 init();
