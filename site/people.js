@@ -45,6 +45,7 @@ export const PEOPLE = [
   {"name": "Sahand Divsalar", "email": "sdivsalar@ethz.ch", "group": "Digital Circuits and Systems (Prof. Benini)"},
   {"name": "Tim Fischer", "email": "fischeti@ethz.ch", "group": "Digital Circuits and Systems (Prof. Benini)"},
   {"name": "Sebastian Frey", "email": "sebastian.frey@iis.ee.ethz.ch", "group": "Digital Circuits and Systems (Prof. Benini)"},
+  {"name": "Tim Frey", "email": "timfrey@student.ethz.ch", "group": "Digital Circuits and Systems (Prof. Benini)"},
   {"name": "Zexin Fu", "email": "zexifu@student.ethz.ch", "group": "Digital Circuits and Systems (Prof. Benini)"},
   {"name": "Paolo Galfano", "email": "pgalfano@iis.ee.ethz.ch", "group": "Digital Circuits and Systems (Prof. Benini)"},
   {"name": "Andrea Mattia Garavagno", "email": "agaravagno@ethz.ch", "group": "Digital Circuits and Systems (Prof. Benini)"},
